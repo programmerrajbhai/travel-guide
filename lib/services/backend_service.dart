@@ -1,0 +1,37 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+class BackendService {
+  // এমুলেটরের জন্য লোকালহোস্ট আইপি
+  static const String baseUrl = 'http://10.0.2.2/travel_admin';
+
+  // ক্যাটাগরি ফেচ করার ফাংশন
+  static Future<List<dynamic>> fetchCategories() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/get_categories.php'));
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Failed to load categories');
+      }
+    } catch (e) {
+      print('Error fetching categories: $e');
+      return [];
+    }
+  }
+
+  // প্লেস ফেচ করার ফাংশন
+  static Future<List<dynamic>> fetchPlaces() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/get_places.php'));
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Failed to load places');
+      }
+    } catch (e) {
+      print('Error fetching places: $e');
+      return [];
+    }
+  }
+}

@@ -8,6 +8,8 @@ import '../../services/api_service.dart';
 import '../../widgets/travel_assistant_card.dart';
 import '../../widgets/quick_actions_section.dart';
 import '../../widgets/map_preview_section.dart';
+import '../widgets/dynamic_categories.dart';
+import '../widgets/dynamic_places.dart';
 import '../widgets/top_hero_section.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -161,18 +163,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 sunProgress: _sunProgress,
               ),
 
+              // ... আগের কোড
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20.0),
                 child: Column(
                   children: [
                     const SizedBox(height: 20),
                     const TravelAssistantCard(),
-                    const SizedBox(height: 28),
-                    const QuickActionsSection(),
-                    const SizedBox(height: 28),
 
-                    // Dynamic Nearby Masjids
-                    _buildDynamicNearbyMasjids(),
+                    const SizedBox(height: 28),
+                    const DynamicCategories(), // <-- নতুন ক্যাটাগরি উইজেট
+
+                    const SizedBox(height: 28),
+                    const DynamicPlaces(), // <-- নতুন প্লেস উইজেট
 
                     const SizedBox(height: 28),
                     const MapPreviewSection(),
@@ -180,6 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+// ... পরের কোড
             ],
           ),
         ),
