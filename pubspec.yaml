@@ -35,9 +35,18 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   http: ^1.1.0
-  geolocator: ^10.1.0
+  geolocator: ^14.1.2
   permission_handler: ^11.0.1
   adhan: ^2.0.0+1  # <-- এখানে 2.0.1 এর বদলে 2.0.0+1 দিন
+
+  geocoding: ^2.1.1        # এই নতুন লাইনটি অ্যাড করুন
+  google_maps_flutter: ^2.18.1
+  url_launcher: ^6.3.3
+  flutter_polyline_points: ^3.1.0
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
+
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../screens/all_categories_screen.dart';
 import '../services/backend_service.dart';
 import '../constants/app_colors.dart';
+import '../screens/category_places_screen.dart';
 
 class DynamicCategories extends StatefulWidget {
   const DynamicCategories({Key? key}) : super(key: key);
@@ -30,10 +30,11 @@ class _DynamicCategoriesState extends State<DynamicCategories> {
             const Text('EXPLORE CATEGORIES', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.0, color: AppColors.textDark)),
             GestureDetector(
               onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const AllCategoriesScreen()));
+                // View All action (mabalin nga idugtong iti sabali a screen inton kua)
               },
               child: const Text('View All', style: TextStyle(fontSize: 12, color: AppColors.primaryColor, fontWeight: FontWeight.w600)),
-            ),  ],
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         FutureBuilder<List<dynamic>>(
@@ -51,41 +52,57 @@ class _DynamicCategoriesState extends State<DynamicCategories> {
               physics: const NeverScrollableScrollPhysics(),
               itemCount: categories.length,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4, // এক লাইনে ৪টি আইটেম
+                crossAxisCount: 4,
                 mainAxisSpacing: 16,
                 crossAxisSpacing: 12,
-                childAspectRatio: 0.8,
+                childAspectRatio: 0.75, // In-adjust tapno adda espasio para iti text
               ),
               itemBuilder: (context, index) {
                 final cat = categories[index];
-                return Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))
-                        ],
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => CategoryPlacesScreen(
+                          categoryId: cat['id'].toString(),
+                          categoryName: cat['name'],
+                        ),
                       ),
-                      child: Image.network(
-                        cat['icon'],
-                        height: 30,
-                        width: 30,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.category, color: Colors.grey),
+                    );
+                  },
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(color: Colors.grey.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 4))
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16), // Siguraduen a nagtimbukel ti suli ti ladawan
+                            child: Image.network(
+                              cat['icon'],
+                              fit: BoxFit.cover, // Punnuenna ti sibubukel a kahon
+                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.category, color: Colors.grey),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      cat['name'],
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textDark),
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                      const SizedBox(height: 8),
+                      Text(
+                        cat['name'],
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textDark),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 );
               },
             );

@@ -4,7 +4,7 @@ import 'home_screen.dart';
 import 'explore/explore_screen.dart';
 import 'map_discover/map_discover_screen.dart';
 import 'community/community_screen.dart';
-import 'profile/profile_screen.dart'; // Import the new profile screen
+import 'profile/profile_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -21,13 +21,13 @@ class _MainScreenState extends State<MainScreen> {
     const ExploreScreen(),
     const MapDiscoverScreen(),
     const CommunityScreen(),
-    const ProfileScreen(), // Updated Profile Screen
+    const ProfileScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true, // Allows content to scroll behind the floating nav bar
+      extendBody: true,
       body: _screens[_currentIndex],
       bottomNavigationBar: _buildFloatingBottomNav(),
     );
@@ -36,8 +36,9 @@ class _MainScreenState extends State<MainScreen> {
   Widget _buildFloatingBottomNav() {
     return SafeArea(
       child: Container(
-        margin: const EdgeInsets.only(left: 20, right: 20, bottom: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        // ৫টি আইটেমের জন্য বাইরের মার্জিন একটু কমিয়ে দেওয়া হয়েছে (20 থেকে 12)
+        margin: const EdgeInsets.only(left: 12, right: 12, bottom: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(30),
@@ -70,12 +71,14 @@ class _MainScreenState extends State<MainScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        // আনসিলেক্টেড অবস্থায় প্যাডিং কমিয়ে স্পেস বাঁচানো হয়েছে
+        padding: EdgeInsets.symmetric(horizontal: isSelected ? 12 : 8, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? AppColors.primaryColor : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min, // এটি ওভারফ্লো ঠেকানোর জন্য খুব জরুরি
           children: [
             Icon(
               isSelected ? filledIcon : outlineIcon,
@@ -83,10 +86,14 @@ class _MainScreenState extends State<MainScreen> {
               size: 24,
             ),
             if (isSelected) ...[
-              const SizedBox(width: 6),
+              const SizedBox(width: 4), // আইকন ও টেক্সটের মাঝের গ্যাপ কমানো হয়েছে
               Text(
                 label,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11 // ৫টি আইটেম বসানোর জন্য ফন্ট সাইজ সামান্য কমানো হয়েছে
+                ),
               )
             ]
           ],

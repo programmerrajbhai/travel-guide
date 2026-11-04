@@ -8,6 +8,7 @@ import '../../services/api_service.dart';
 import '../../widgets/travel_assistant_card.dart';
 import '../../widgets/quick_actions_section.dart';
 import '../../widgets/map_preview_section.dart';
+import '../services/location_service.dart';
 import '../widgets/dynamic_categories.dart';
 import '../widgets/dynamic_places.dart';
 import '../widgets/top_hero_section.dart';
@@ -46,33 +47,37 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initializeData() async {
-    // জিপিএস বাইপাস করে আপাতত একটি ফিক্সড লোকেশন (যেমন: ঢাকা) দিয়ে টেস্ট করছি
-    double lat = 23.8103;
-    double lon = 90.4125;
+    if (mounted) {
+      setState(() => _cityName = "Locating...");
+    }
 
-    // গুগল এপিআই ছাড়া ম্যানুয়ালি শহরের নাম বসিয়ে দিলাম টেস্টের জন্য
+    // ১. লাইভ জিপিএস লোকেশন ফেচ করা
+    final position = await LocationService.getCurrentLocation();
+
+    // লোকেশন না পেলে ডিফল্ট ঢাকা সেট করা
+    double lat = position?.latitude ?? 23.8103;
+    double lon = position?.longitude ?? 90.4125;
+
+    // ২. শহরের নাম বের করা
+    String city = await LocationService.getCityName(lat, lon);
+
     if (mounted) {
       setState(() {
-        _cityName = "Dhaka, Bangladesh";
+        _cityName = city;
       });
     }
 
-    // 1. Fetch Weather (আপনার দেওয়া API Key দিয়ে এটা কাজ করবে)
+    // ৩. লাইভ লোকেশন দিয়ে ওয়েদার এবং নামাজের সময় সেট করা
     final weatherData = await ApiService.getWeather(lat, lon);
     if (mounted && weatherData != null) {
       setState(() {
-        _temperature = "${weatherData['main']['temp'].round()}°F";
+        _temperature = "${weatherData['main']['temp'].round()}°C";
         _weatherStatus = weatherData['weather'][0]['main'];
       });
     }
 
-    // 2. Setup Prayer Times
     _setupPrayerTimes(lat, lon);
-
-    // 3. Fetch Masjids (এটা কাজ করবে না কারণ গুগল এপিআই কী নেই, তাই কমেন্ট করে রাখলাম)
-    // _fetchMasjids(lat, lon);
   }
-
 
   Future<void> _fetchWeatherAndCity(double lat, double lon) async {
     final city = await ApiService.getCityName(lat, lon);
