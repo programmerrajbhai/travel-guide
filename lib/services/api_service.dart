@@ -17,6 +17,8 @@ class ApiService {
   static Future<dynamic> getNearbyMasjids(double lat, double lon) async {
     // API key na thakai fake kacher 2ta mosque dicchi
     return [
+
+
       {
         'name': 'Baitul Mukarram National Mosque',
         'rating': '4.8',
@@ -29,6 +31,9 @@ class ApiService {
         'latitude': 23.7937,
         'longitude': 90.4143
       }
+
+
+
     ];
   }
 

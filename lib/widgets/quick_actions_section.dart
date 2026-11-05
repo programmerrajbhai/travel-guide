@@ -1,95 +1,168 @@
 import 'package:flutter/material.dart';
+
 import '../constants/app_colors.dart';
-import '../screens/prayer_qibla/prayer_qibla_screen.dart';
-import '../screens/map_discover/map_discover_screen.dart';
 import '../screens/category_places_screen.dart';
+import '../screens/map_discover/map_discover_screen.dart';
+import '../screens/prayer_qibla/prayer_qibla_screen.dart';
+import 'live_guide_panel.dart';
 
 class QuickActionsSection extends StatelessWidget {
-  const QuickActionsSection({Key? key}) : super(key: key);
+  const QuickActionsSection({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // ডাটা টাইপ সিম্প্লিফাই করা হলো যাতে কম্পাইলার কনফিউজড না হয়
-    final actionsList = [
-      {'icon': Icons.mosque, 'color': Colors.green, 'label': 'Masjids', 'action': 'category', 'id': 'masjids'},
-      {'icon': Icons.explore, 'color': Colors.teal, 'label': 'Qibla', 'action': 'qibla'},
-      {'icon': Icons.map, 'color': Colors.blue, 'label': 'Map', 'action': 'map'},
-      {'icon': Icons.restaurant, 'color': Colors.orange, 'label': 'Restaurants', 'action': 'category', 'id': '1'},
-      {'icon': Icons.shopping_cart, 'color': Colors.green, 'label': 'Grocery', 'action': 'category', 'id': '2'},
-      {'icon': Icons.set_meal, 'color': Colors.redAccent, 'label': 'Butcher', 'action': 'category', 'id': '3'},
-      {'icon': Icons.hotel, 'color': Colors.purple, 'label': 'Hotels', 'action': 'category', 'id': '4'},
-      {'icon': Icons.local_hospital, 'color': Colors.blueAccent, 'label': 'Clinics', 'action': 'category', 'id': '5'},
-    ];
+    void openScreen(Widget screen) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => screen),
+      );
+    }
+
+    void openCategory(String id, String name) {
+      openScreen(CategoryPlacesScreen(
+        categoryId: id,
+        categoryName: name,
+      ));
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: const [
-            Text('QUICK ACTIONS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textDark, letterSpacing: 0.5)),
-            Text('View All', style: TextStyle(color: AppColors.primaryColor, fontSize: 12, fontWeight: FontWeight.w600)),
+        const Text(
+          'QUICK ACTIONS',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textDark,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 14),
+        GridView.count(
+          crossAxisCount: 4,
+          shrinkWrap: true,
+          primary: false,
+          padding: EdgeInsets.zero,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 12,
+          mainAxisExtent: 86,
+          children: [
+            _ActionTile(
+              label: 'Masjids',
+              icon: Icons.mosque,
+              color: Colors.green,
+              onTap: () => openScreen(const _NearbyMosquesScreen()),
+            ),
+            _ActionTile(
+              label: 'Qibla',
+              icon: Icons.explore,
+              color: Colors.teal,
+              onTap: () => openScreen(const PrayerQiblaScreen()),
+            ),
+            _ActionTile(
+              label: 'Map',
+              icon: Icons.map,
+              color: Colors.blue,
+              onTap: () => openScreen(const MapDiscoverScreen()),
+            ),
+            _ActionTile(
+              label: 'Restaurants',
+              icon: Icons.restaurant,
+              color: Colors.orange,
+              onTap: () => openCategory('1', 'Restaurants'),
+            ),
+            _ActionTile(
+              label: 'Grocery',
+              icon: Icons.shopping_cart,
+              color: Colors.green,
+              onTap: () => openCategory('2', 'Grocery'),
+            ),
+            _ActionTile(
+              label: 'Butcher',
+              icon: Icons.set_meal,
+              color: Colors.redAccent,
+              onTap: () => openCategory('3', 'Butcher'),
+            ),
+            _ActionTile(
+              label: 'Hotels',
+              icon: Icons.hotel,
+              color: Colors.purple,
+              onTap: () => openCategory('4', 'Hotels'),
+            ),
+            _ActionTile(
+              label: 'Clinics',
+              icon: Icons.local_hospital,
+              color: Colors.blueAccent,
+              onTap: () => openCategory('5', 'Clinics'),
+            ),
           ],
         ),
-        const SizedBox(height: 20),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: actionsList.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
-            mainAxisSpacing: 20,
-            crossAxisSpacing: 10,
-            childAspectRatio: 0.75,
-          ),
-          itemBuilder: (context, index) {
-            final action = actionsList[index];
-            return GestureDetector(
-              onTap: () {
-                if (action['action'] == 'qibla') {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const PrayerQiblaScreen()));
-                } else if (action['action'] == 'map') {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const MapDiscoverScreen()));
-                } else if (action['action'] == 'category') {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (context) => CategoryPlacesScreen(
-                      categoryId: action['id'].toString(),
-                      categoryName: action['label'].toString(),
-                    ),
-                  ));
-                }
-              },
-              child: Column(
-                children: [
-                  Container(
-                    width: 55,
-                    height: 55,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))
-                      ],
-                    ),
-                    child: Icon(
-                      action['icon'] as IconData,
-                      color: action['color'] as Color,
-                      size: 26,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    action['label'].toString(),
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textDark),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
       ],
+    );
+  }
+}
+
+class _NearbyMosquesScreen extends StatelessWidget {
+  const _NearbyMosquesScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.backgroundColor,
+      appBar: AppBar(title: const Text('Nearby mosques')),
+      body: const SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(16),
+          child: LiveGuidePanel(view: GuideView.mosques),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ActionTile({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 8),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 27),
+              const SizedBox(height: 7),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textDark,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

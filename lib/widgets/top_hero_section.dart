@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../screens/prayer_qibla/prayer_qibla_screen.dart';
 
 class DynamicTopHeroSection extends StatelessWidget {
   final String cityName;
@@ -44,7 +45,15 @@ class DynamicTopHeroSection extends StatelessWidget {
             children: [
               _buildHeader(),
               const SizedBox(height: 24),
-              _buildPrayerCard(),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const PrayerQiblaScreen(),
+                  ),
+                ),
+                child: _buildPrayerCard(),
+              ),
             ],
           ),
         ),
