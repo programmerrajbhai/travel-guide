@@ -1,53 +1,44 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
+import 'api_service.dart';
 
 class LocationService {
-  // আপনার Geoapify API Key এখানে দিন (যেমন: "ac1b...6d")
-  static const String _geoapifyApiKey = "c39a5aa2e8f341b79dca99e2a4a3aeea";
-
+  // ১. ইউজারের বর্তমান লাইভ লোকেশন বের করার মেথড
   static Future<Position?> getCurrentLocation() async {
     bool serviceEnabled;
     LocationPermission permission;
 
+    // লোকেশন সার্ভিস অন আছে কিনা চেক করা
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return null;
+    if (!serviceEnabled) {
+      print("Location services are disabled.");
+      return null;
+    }
 
+    // লোকেশন পারমিশন চেক করা
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return null;
-    }
-
-    if (permission == LocationPermission.deniedForever) return null;
-
-    return await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-  }
-
-
-  static Future<String> getCityName(double lat, double lon) async {
-    try {
-      // Geoapify API ব্যবহার করে লাইভ লোকেশন থেকে শহরের নাম বের করা
-      final url = Uri.parse(
-          "https://api.geoapify.com/v1/geocode/reverse?lat=$lat&lon=$lon&apiKey=$_geoapifyApiKey");
-
-      final response = await http.get(url);
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['features'] != null && data['features'].isNotEmpty) {
-          final properties = data['features'][0]['properties'];
-
-          // শহর না পেলে জেলা বা স্টেটের নাম নিবে
-          String city = properties['city'] ?? properties['state'] ?? properties['county'] ?? "Unknown";
-          String country = properties['country'] ?? "";
-
-          return "$city, $country";
-        }
+      if (permission == LocationPermission.denied) {
+        print("Location permissions are denied");
+        return null;
       }
-    } catch (e) {
-      print("Error getting city from Geoapify: $e");
     }
-    return "Unknown Location";
+
+    if (permission == LocationPermission.deniedForever) {
+      print("Location permissions are permanently denied.");
+      return null;
+    }
+
+    // সবকিছু ঠিক থাকলে লাইভ পজিশন রিটার্ন করা
+    return await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
   }
+
+  // ২. শহরের নাম বের করার মেথড (যা home_screen.dart খুঁজছে)
+  static Future<String> getCityName(double lat, double lon) async {
+    // এটি সরাসরি ApiService থেকে শহরের নাম নিয়ে আসবে
+    return await ApiService.getCityName(lat, lon);
+  }
+
 }

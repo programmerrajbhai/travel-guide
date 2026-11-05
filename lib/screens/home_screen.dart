@@ -4,11 +4,10 @@ import 'package:geolocator/geolocator.dart';
 import 'package:adhan/adhan.dart';
 import '../../constants/app_colors.dart';
 import '../../services/api_service.dart';
-// আপনার আগের তৈরি করা উইজেটগুলো ইম্পোর্ট করুন
+import '../../services/location_service.dart';
 import '../../widgets/travel_assistant_card.dart';
 import '../../widgets/quick_actions_section.dart';
 import '../../widgets/map_preview_section.dart';
-import '../services/location_service.dart';
 import '../widgets/dynamic_categories.dart';
 import '../widgets/dynamic_places.dart';
 import '../widgets/top_hero_section.dart';
@@ -23,7 +22,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   // State Variables
   String _cityName = "Locating...";
-  String _temperature = "--°F";
+  String _temperature = "--°C";
   String _weatherStatus = "Loading";
 
   String _nextPrayerName = "Loading";
@@ -33,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<dynamic> _nearbyMasjids = [];
   Timer? _prayerTimer;
+  bool _isLoadingMasjids = true;
 
   @override
   void initState() {
@@ -47,10 +47,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initializeData() async {
-    if (mounted) {
-      setState(() => _cityName = "Locating...");
-    }
-
     // ১. লাইভ জিপিএস লোকেশন ফেচ করা
     final position = await LocationService.getCurrentLocation();
 
@@ -58,50 +54,39 @@ class _HomeScreenState extends State<HomeScreen> {
     double lat = position?.latitude ?? 23.8103;
     double lon = position?.longitude ?? 90.4125;
 
-    // ২. শহরের নাম বের করা
-    String city = await LocationService.getCityName(lat, lon);
+    // ২. শহরের নাম, ওয়েদার এবং কাছাকাছি মসজিদ ফেচ করা
+    _fetchLocationData(lat, lon);
 
-    if (mounted) {
-      setState(() {
-        _cityName = city;
-      });
-    }
-
-    // ৩. লাইভ লোকেশন দিয়ে ওয়েদার এবং নামাজের সময় সেট করা
-    final weatherData = await ApiService.getWeather(lat, lon);
-    if (mounted && weatherData != null) {
-      setState(() {
-        _temperature = "${weatherData['main']['temp'].round()}°C";
-        _weatherStatus = weatherData['weather'][0]['main'];
-      });
-    }
-
+    // ৩. নামাজের সময় সেট করা
     _setupPrayerTimes(lat, lon);
   }
 
-  Future<void> _fetchWeatherAndCity(double lat, double lon) async {
-    final city = await ApiService.getCityName(lat, lon);
+  Future<void> _fetchLocationData(double lat, double lon) async {
+    // API Call গুলো একসাথে করা
+    final city = await LocationService.getCityName(lat, lon);
     final weatherData = await ApiService.getWeather(lat, lon);
+    final masjids = await ApiService.getNearbyMasjids(lat, lon);
 
     if (mounted) {
       setState(() {
         _cityName = city;
+
         if (weatherData != null) {
-          _temperature = "${weatherData['main']['temp'].round()}°F";
+          // ওয়েদার API থেকে Fahrenheit-এ ডাটা আসলে Celsius-এ কনভার্ট করা
+          double tempF = weatherData['main']['temp'].toDouble();
+          double tempC = (tempF - 32) * 5 / 9;
+          _temperature = "${tempC.round()}°C";
           _weatherStatus = weatherData['weather'][0]['main'];
         }
+
+        if (masjids != null) {
+          _nearbyMasjids = masjids.take(2).toList();
+        }
+        _isLoadingMasjids = false;
       });
     }
   }
 
-  Future<void> _fetchMasjids(double lat, double lon) async {
-    final masjids = await ApiService.getNearbyMasjids(lat, lon);
-    if (mounted && masjids != null) {
-      setState(() {
-        _nearbyMasjids = masjids.take(2).toList(); // Show top 2
-      });
-    }
-  }
   void _setupPrayerTimes(double lat, double lon) {
     final myCoordinates = Coordinates(lat, lon);
     final params = CalculationMethod.karachi.getParameters();
@@ -109,22 +94,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _prayerTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       final now = DateTime.now();
-
-      // Ajker prayer times calculate kora
       final prayerTimes = PrayerTimes.today(myCoordinates, params);
       var next = prayerTimes.nextPrayer();
       var nextPrayerDateTime = prayerTimes.timeForPrayer(next);
 
-      // Jodi Isha er por hoy (Orthot ajker r kono namaz baki nai)
       if (next == Prayer.none) {
-        // Agamikal er date ber kora
         final tomorrow = now.add(const Duration(days: 1));
         final tomorrowPrayerTimes = PrayerTimes(
             myCoordinates,
             DateComponents(tomorrow.year, tomorrow.month, tomorrow.day),
             params
         );
-        // Next prayer hisabe agamikal er Fajr set kora
         next = Prayer.fajr;
         nextPrayerDateTime = tomorrowPrayerTimes.fajr;
       }
@@ -132,13 +112,11 @@ class _HomeScreenState extends State<HomeScreen> {
       if (nextPrayerDateTime != null && mounted) {
         final diff = nextPrayerDateTime.difference(now);
 
-        // Time formatting
         String twoDigits(int n) => n.toString().padLeft(2, "0");
         String hours = twoDigits(diff.inHours);
         String minutes = twoDigits(diff.inMinutes.remainder(60));
         String seconds = twoDigits(diff.inSeconds.remainder(60));
 
-        // Sun progress calculation
         double progress = 1.0 - (diff.inMinutes / (6 * 60));
 
         setState(() {
@@ -149,6 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -168,7 +147,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 sunProgress: _sunProgress,
               ),
 
-              // ... আগের কোড
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20.0),
                 child: Column(
@@ -177,10 +155,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     const TravelAssistantCard(),
 
                     const SizedBox(height: 28),
-                    const DynamicCategories(), // <-- নতুন ক্যাটাগরি উইজেট
+                    const QuickActionsSection(), // Quick Actions (Mosque, Qibla, etc.)
 
                     const SizedBox(height: 28),
-                    const DynamicPlaces(), // <-- নতুন প্লেস উইজেট
+                    const DynamicCategories(),
+
+                    const SizedBox(height: 28),
+                    const DynamicPlaces(),
+
+                    const SizedBox(height: 28),
+                    _buildDynamicNearbyMasjids(), // লাইভ নিয়ারবাই মসজিদ
 
                     const SizedBox(height: 28),
                     const MapPreviewSection(),
@@ -188,7 +172,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-// ... পরের কোড
             ],
           ),
         ),
@@ -207,8 +190,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        if (_nearbyMasjids.isEmpty)
-          const Center(child: CircularProgressIndicator())
+        if (_isLoadingMasjids)
+          const Center(child: CircularProgressIndicator(color: AppColors.primaryColor))
+        else if (_nearbyMasjids.isEmpty)
+          const Center(child: Text("No masjids found nearby.", style: TextStyle(color: Colors.grey)))
         else
           ..._nearbyMasjids.map((masjid) => Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -216,17 +201,19 @@ class _HomeScreenState extends State<HomeScreen> {
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.08), blurRadius: 10, offset: const Offset(0, 4))]),
             child: Row(
               children: [
+
+
                 Container(
                   width: 70, height: 70,
                   decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.mosque, color: Colors.grey),
+                  child: const Icon(Icons.mosque, color: Colors.grey, size: 30),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(masjid['name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.textDark)),
+                      Text(masjid['name'] ?? 'Unknown Mosque', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.textDark), maxLines: 1, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 6),
                       Row(
                         children: [
@@ -238,11 +225,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
+
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade200)),
                   child: const Icon(Icons.near_me_outlined, size: 18, color: AppColors.textDark),
                 )
+
+
               ],
             ),
           )).toList(),

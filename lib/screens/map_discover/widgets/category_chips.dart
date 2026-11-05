@@ -6,6 +6,7 @@ class CategoryChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+
     final categories = [
       {
         'label': 'Masjids',
@@ -91,5 +92,7 @@ class CategoryChips extends StatelessWidget {
         },
       ),
     );
+
+
   }
 }

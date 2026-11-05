@@ -15,6 +15,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
   late Future<List<dynamic>> _placesFuture;
   late Future<List<dynamic>> _categoriesFuture;
   String _searchQuery = "";
+  String _selectedCategoryId = ""; // Added for filtering
 
   final List<Color> _bgColors = [
     Colors.green.withOpacity(0.15),
@@ -32,8 +33,108 @@ class _ExploreScreenState extends State<ExploreScreen> {
   @override
   void initState() {
     super.initState();
-    _placesFuture = BackendService.fetchPlaces();
-    _categoriesFuture = BackendService.fetchCategories();
+    _fetchData();
+  }
+
+  void _fetchData() {
+    setState(() {
+      _placesFuture = BackendService.fetchPlaces();
+      _categoriesFuture = BackendService.fetchCategories();
+    });
+  }
+
+  // --- Search and Filter Logic ---
+  List<dynamic> _filterPlaces(List<dynamic> places) {
+    return places.where((place) {
+      final nameMatches = place['name'].toString().toLowerCase().contains(_searchQuery);
+      final categoryMatches = _selectedCategoryId.isEmpty || place['category_id'].toString() == _selectedCategoryId;
+      return nameMatches && categoryMatches;
+    }).toList();
+  }
+
+  void _showFilterOptions(BuildContext context, List<dynamic> categories) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+            builder: (BuildContext context, StateSetter setModalState) {
+              return Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text("Filter by Category", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        // "All" option
+                        FilterChip(
+                          label: const Text("All"),
+                          selected: _selectedCategoryId.isEmpty,
+                          selectedColor: AppColors.primaryColor.withOpacity(0.2),
+                          checkmarkColor: AppColors.primaryColor,
+                          onSelected: (bool selected) {
+                            setModalState(() => _selectedCategoryId = "");
+                            setState(() => _selectedCategoryId = "");
+                          },
+                        ),
+                        // Dynamic categories
+                        ...categories.map((cat) {
+                          return FilterChip(
+                            label: Text(cat['name']),
+                            selected: _selectedCategoryId == cat['id'].toString(),
+                            selectedColor: AppColors.primaryColor.withOpacity(0.2),
+                            checkmarkColor: AppColors.primaryColor,
+                            onSelected: (bool selected) {
+                              setModalState(() {
+                                _selectedCategoryId = selected ? cat['id'].toString() : "";
+                              });
+                              setState(() {
+                                _selectedCategoryId = selected ? cat['id'].toString() : "";
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryColor,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        child: const Text('Apply Filters', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                      ),
+                    )
+                  ],
+                ),
+              );
+            }
+        );
+      },
+    );
   }
 
   void _showPlaceDetailsBottomSheet(BuildContext context, dynamic place) {
@@ -189,307 +290,352 @@ class _ExploreScreenState extends State<ExploreScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 30, 20, 8),
-                child: Text(
-                  'Where to next?',
-                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF1B263B), letterSpacing: -0.5),
+        child: RefreshIndicator(
+          onRefresh: () async {
+            _fetchData();
+          },
+          color: AppColors.primaryColor,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 30, 20, 8),
+                  child: Text(
+                    'Where to next?',
+                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF1B263B), letterSpacing: -0.5),
+                  ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Text(
-                  'Discover halal-friendly destinations around the world.',
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    'Discover halal-friendly destinations around the world.',
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 15, offset: const Offset(0, 5))
+                // Search Bar & Filter Button
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: FutureBuilder<List<dynamic>>(
+                      future: _categoriesFuture,
+                      builder: (context, snapshot) {
+                        final categories = snapshot.data ?? [];
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 15, offset: const Offset(0, 5))
+                                  ],
+                                ),
+                                child: TextField(
+                                  onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
+                                  decoration: InputDecoration(
+                                    hintText: 'Search destinations, places...',
+                                    hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                                    prefixIcon: const Icon(Icons.search, color: Colors.black87, size: 22),
+                                    border: InputBorder.none,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            GestureDetector(
+                              onTap: () {
+                                if (categories.isNotEmpty) {
+                                  _showFilterOptions(context, categories);
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Categories loading...")));
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  // Fixed the error here
+                                  color: _selectedCategoryId.isEmpty ? const Color(0xFF115C49) : Colors.amber.shade700,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(color: const Color(0xFF115C49).withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))
+                                  ],
+                                ),
+                                child: const Icon(Icons.tune, color: Colors.white, size: 24),
+                              ),
+                            ),
                           ],
+                        );
+                      }
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                // Categories Row
+                FutureBuilder<List<dynamic>>(
+                  future: _categoriesFuture,
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) return const SizedBox.shrink();
+
+                    final categories = snapshot.data!;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: List.generate(
+                            categories.length > 4 ? 4 : categories.length,
+                                (index) {
+                              final cat = categories[index];
+                              return GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (context) => CategoryPlacesScreen(
+                                            categoryId: cat['id'].toString(),
+                                            categoryName: cat['name'],
+                                          )
+                                      )
+                                  );
+                                },
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      width: 70,
+                                      height: 70,
+                                      decoration: BoxDecoration(
+                                          color: _bgColors[index % _bgColors.length],
+                                          borderRadius: BorderRadius.circular(20),
+                                          boxShadow: [
+                                            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4))
+                                          ]
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(20),
+                                        child: Image.network(
+                                            cat['icon'],
+                                            width: 70,
+                                            height: 70,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (c,e,s) => Center(
+                                                child: Icon(Icons.category, color: _iconColors[index % _iconColors.length], size: 30)
+                                            )
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                        cat['name'],
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87)
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
                         ),
-                        child: TextField(
-                          onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
-                          decoration: InputDecoration(
-                            hintText: 'Search destinations, places...',
-                            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-                            prefixIcon: const Icon(Icons.search, color: Colors.black87, size: 22),
-                            border: InputBorder.none,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 36),
+
+                // Destinations Section Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(_searchQuery.isEmpty && _selectedCategoryId.isEmpty ? 'Trending Destinations' : 'Search Results',
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF1B263B))),
+                      if (_searchQuery.isEmpty && _selectedCategoryId.isEmpty)
+                        const Text('See All', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF115C49))),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Destinations List
+                FutureBuilder<List<dynamic>>(
+                  future: _placesFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                    if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) return const Center(child: Text("No destinations found in database."));
+
+                    // Apply unified filter logic
+                    final filteredPlaces = _filterPlaces(snapshot.data!);
+
+                    if (filteredPlaces.isEmpty) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(40.0),
+                          child: Column(
+                            children: [
+                              Icon(Icons.search_off, size: 48, color: Colors.grey.shade400),
+                              const SizedBox(height: 16),
+                              Text("No matches found.", style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
+                              if (_selectedCategoryId.isNotEmpty)
+                                TextButton(
+                                    onPressed: () => setState(() { _searchQuery = ""; _selectedCategoryId = ""; }),
+                                    child: const Text("Clear Filters", style: TextStyle(color: AppColors.primaryColor))
+                                )
+                            ],
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF115C49),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(color: const Color(0xFF115C49).withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))
-                        ],
-                      ),
-                      child: const Icon(Icons.tune, color: Colors.white, size: 24),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
+                      );
+                    }
 
-              FutureBuilder<List<dynamic>>(
-                future: _categoriesFuture,
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) return const SizedBox.shrink();
-
-                  final categories = snapshot.data!;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: List.generate(
-                          categories.length > 4 ? 4 : categories.length,
-                              (index) {
-                            final cat = categories[index];
-                            return GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (context) => CategoryPlacesScreen(
-                                          categoryId: cat['id'].toString(),
-                                          categoryName: cat['name'],
-                                        )
-                                    )
-                                );
-                              },
-                              child: Column(
+                    return SizedBox(
+                      height: 260,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: filteredPlaces.length,
+                        itemBuilder: (context, index) {
+                          final place = filteredPlaces[index];
+                          return GestureDetector(
+                            onTap: () => _showPlaceDetailsBottomSheet(context, place),
+                            child: Container(
+                              width: 180,
+                              margin: const EdgeInsets.only(right: 16),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(24),
+                                image: DecorationImage(
+                                  image: NetworkImage(place['image']),
+                                  fit: BoxFit.cover,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))
+                                ],
+                              ),
+                              child: Stack(
                                 children: [
                                   Container(
-                                    width: 70,
-                                    height: 70,
                                     decoration: BoxDecoration(
-                                        color: _bgColors[index % _bgColors.length],
-                                        borderRadius: BorderRadius.circular(20),
-                                        boxShadow: [
-                                          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4))
-                                        ]
-                                    ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(20),
-                                      child: Image.network(
-                                          cat['icon'],
-                                          width: 70,
-                                          height: 70,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (c,e,s) => Center(
-                                              child: Icon(Icons.category, color: _iconColors[index % _iconColors.length], size: 30)
-                                          )
+                                      borderRadius: BorderRadius.circular(24),
+                                      gradient: LinearGradient(
+                                        colors: [Colors.black.withOpacity(0.0), Colors.black.withOpacity(0.8)],
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                      cat['name'],
-                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87)
-                                  ),
-                                ],
-                              ),
-                            );
-                          }
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 36),
-
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
-                    Text('Trending Destinations', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF1B263B))),
-                    Text('See All', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF115C49))),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              FutureBuilder<List<dynamic>>(
-                future: _placesFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) return const Center(child: Text("No destinations found."));
-
-                  final places = snapshot.data!.where((place) => place['name'].toString().toLowerCase().contains(_searchQuery)).toList();
-
-                  if (places.isEmpty) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20.0),
-                        child: Text("No results for '$_searchQuery'", style: TextStyle(color: Colors.grey.shade500)),
-                      ),
-                    );
-                  }
-
-                  return SizedBox(
-                    height: 260,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: places.length,
-                      itemBuilder: (context, index) {
-                        final place = places[index];
-                        return GestureDetector(
-                          onTap: () => _showPlaceDetailsBottomSheet(context, place),
-                          child: Container(
-                            width: 180,
-                            margin: const EdgeInsets.only(right: 16),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(24),
-                              image: DecorationImage(
-                                image: NetworkImage(place['image']),
-                                fit: BoxFit.cover,
-                              ),
-                              boxShadow: [
-                                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))
-                              ],
-                            ),
-                            child: Stack(
-                              children: [
-                                Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(24),
-                                    gradient: LinearGradient(
-                                      colors: [Colors.black.withOpacity(0.0), Colors.black.withOpacity(0.8)],
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
+                                  Positioned(
+                                    top: 12, right: 12,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: Colors.white.withOpacity(0.2)),
+                                      ),
+                                      child: Row(
+                                        children: const [
+                                          Icon(Icons.star, color: Colors.amber, size: 12),
+                                          SizedBox(width: 4),
+                                          Text("4.9", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                                Positioned(
-                                  top: 12, right: 12,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.3),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: Colors.white.withOpacity(0.2)),
-                                      // backdropFilter লাইনটি রিমুভ করা হয়েছে
-                                    ),
-                                    child: Row(
-                                      children: const [
-                                        Icon(Icons.star, color: Colors.amber, size: 12),
-                                        SizedBox(width: 4),
-                                        Text("4.9", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                                  Positioned(
+                                    bottom: 16, left: 16, right: 16,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          place['name'],
+                                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.location_on, color: Colors.white70, size: 14),
+                                            const SizedBox(width: 4),
+                                            Expanded(
+                                              child: Text(
+                                                place['category_name'] ?? 'Destination',
+                                                style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+                                                maxLines: 1, overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ],
                                     ),
                                   ),
-                                ),
-                                Positioned(
-                                  bottom: 16, left: 16, right: 16,
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        place['name'],
-                                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                                        maxLines: 1, overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.location_on, color: Colors.white70, size: 14),
-                                          const SizedBox(width: 4),
-                                          Expanded(
-                                            child: Text(
-                                              place['category_name'] ?? 'Destination',
-                                              style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
-                                              maxLines: 1, overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 36),
+
+                // Curated For You
+                if (_searchQuery.isEmpty && _selectedCategoryId.isEmpty) ...[
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Text('Curated For You', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF1B263B))),
+                  ),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Container(
+                      height: 180,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        image: const DecorationImage(
+                          image: NetworkImage('https://images.unsplash.com/photo-1548013146-72479768bada?q=80&w=1000&auto=format&fit=crop'),
+                          fit: BoxFit.cover,
+                        ),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 5))
+                        ],
+                      ),
+                      child: Stack(
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(24),
+                              gradient: LinearGradient(
+                                colors: [Colors.black.withOpacity(0.1), Colors.black.withOpacity(0.6)],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                              ),
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 36),
-
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20),
-                child: Text('Curated For You', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF1B263B))),
-              ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Container(
-                  height: 180,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
-                    image: const DecorationImage(
-                      image: NetworkImage('https://images.unsplash.com/photo-1548013146-72479768bada?q=80&w=1000&auto=format&fit=crop'),
-                      fit: BoxFit.cover,
-                    ),
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 5))
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(24),
-                          gradient: LinearGradient(
-                            colors: [Colors.black.withOpacity(0.1), Colors.black.withOpacity(0.6)],
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                          ),
-                        ),
+                          Positioned(
+                            bottom: 24, left: 20,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(color: const Color(0xFF115C49), borderRadius: BorderRadius.circular(8)),
+                              child: const Text('FEATURED GUIDE', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                            ),
+                          )
+                        ],
                       ),
-                      Positioned(
-                        bottom: 24, left: 20,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(color: const Color(0xFF115C49), borderRadius: BorderRadius.circular(8)),
-                          child: const Text('FEATURED GUIDE', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
-                        ),
-                      )
-                    ],
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 120),
-            ],
+                ],
+                const SizedBox(height: 120),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+
+
 }

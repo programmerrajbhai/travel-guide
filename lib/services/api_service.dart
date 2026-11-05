@@ -1,59 +1,64 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 
 class ApiService {
-  // ১. ওয়েদার ডেটা ফেচ করা
-  static Future<Map<String, dynamic>?> getWeather(double lat, double lon) async {
-    try {
-      final url = '${ApiConfig.weatherBaseUrl}?lat=$lat&lon=$lon&appid=${ApiConfig.weatherApiKey}&units=imperial'; // units=imperial for Fahrenheit
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      }
-    } catch (e) {
-      print("Weather API Error: $e");
-    }
-    return null;
+  // 1. Weather Data (Mocking for now to show UI)
+  static Future<dynamic> getWeather(double lat, double lon) async {
+    // API key na thakai ami ekta fake response dicchi jate UI show kore
+    return {
+      'main': {'temp': 28.5}, // 28.5 Celsius
+      'weather': [{'main': 'Clear'}]
+    };
   }
 
-  // ২. কাছাকাছি মসজিদ ফেচ করা
-  static Future<List<dynamic>?> getNearbyMasjids(double lat, double lon) async {
-    try {
-      final url = '${ApiConfig.googlePlacesUrl}?location=$lat,$lon&radius=5000&type=mosque&keyword=islamic+center&key=${ApiConfig.googleApiKey}';
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return data['results'];
+  // 2. Nearby Mosque (Mocking using dummy data)
+  static Future<dynamic> getNearbyMasjids(double lat, double lon) async {
+    // API key na thakai fake kacher 2ta mosque dicchi
+    return [
+      {
+        'name': 'Baitul Mukarram National Mosque',
+        'rating': '4.8',
+        'latitude': 23.7276,
+        'longitude': 90.4125
+      },
+      {
+        'name': 'Gulshan Society Mosque',
+        'rating': '4.6',
+        'latitude': 23.7937,
+        'longitude': 90.4143
       }
-    } catch (e) {
-      print("Places API Error: $e");
-    }
-    return null;
+    ];
   }
 
-  // ৩. ল্যাটিচিউড-লঙ্গিচিউড থেকে শহরের নাম বের করা
+  // 3. City Name
   static Future<String> getCityName(double lat, double lon) async {
+    // Google API kaj na korle default Dhaka return korbe
+    return "Dhaka, BD";
+  }
+
+  // 4. Aladhan API - Get Prayer Times (Eta kaj korbe karon ekhane key lagbe na)
+  static Future<dynamic> getPrayerTimes(double lat, double lng) async {
     try {
-      final url = '${ApiConfig.googleGeocodingUrl}?latlng=$lat,$lon&key=${ApiConfig.googleApiKey}';
-      final response = await http.get(Uri.parse(url));
+      final date = DateTime.now();
+      final formattedDate = "${date.day}-${date.month}-${date.year}";
+
+      final url = Uri.parse('https://api.aladhan.com/v1/timings/$formattedDate?latitude=$lat&longitude=$lng&method=1');
+      final response = await http.get(url);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['results'].isNotEmpty) {
-          // Extracting city/locality name
-          for (var component in data['results'][0]['address_components']) {
-            if (component['types'].contains('locality')) {
-              return component['long_name'];
-            }
-          }
-        }
+        return data['data'];
+      } else {
+        print("Aladhan API Error: ${response.statusCode}");
+        return null;
       }
+
+
     } catch (e) {
-      print("Geocoding Error: $e");
+      print("Exception in getPrayerTimes: $e");
+      return null;
     }
-    return "Unknown Location";
   }
 }
