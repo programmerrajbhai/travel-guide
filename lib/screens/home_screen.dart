@@ -10,10 +10,11 @@ import '../config/api_config.dart';
 import '../constants/app_colors.dart';
 import '../services/live_guide_service.dart';
 import '../services/location_service.dart';
+import '../services/nearby_mosque_service.dart';
 import '../widgets/dynamic_categories.dart';
 import '../widgets/dynamic_places.dart';
-import '../widgets/live_guide_panel.dart';
 import '../widgets/map_preview_section.dart';
+import '../widgets/nearby_mosques_section.dart';
 import '../widgets/quick_actions_section.dart';
 import '../widgets/top_hero_section.dart';
 import '../widgets/travel_assistant_card.dart';
@@ -27,6 +28,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late Future<LatLng> _location;
+  int _refreshVersion = 0;
 
   @override
   void initState() {
@@ -35,42 +37,42 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<LatLng> _getLocation() async {
-    final position = await LocationService.getCurrentLocation()
-        .timeout(const Duration(seconds: 25));
+    final position =
+    await LocationService.getCurrentLocation().timeout(
+      const Duration(seconds: 25),
+    );
 
     if (position == null) {
-      throw const GuideException('Enable GPS and allow location access.');
+      throw const GuideException(
+        'Enable GPS and allow location access.',
+      );
     }
 
-    return LatLng(position.latitude, position.longitude);
+    return LatLng(
+      position.latitude,
+      position.longitude,
+    );
   }
+
   Future<void> _refresh() async {
     final request = _getLocation();
 
     setState(() {
       _location = request;
+      _refreshVersion++;
     });
 
     try {
       await request;
     } catch (_) {
-      // FutureBuilder দেখাবে কেন location পাওয়া যায়নি।
+      // FutureBuilder displays the location error.
     }
   }
 
   void _openAllMosques() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => Scaffold(
-          backgroundColor: AppColors.backgroundColor,
-          appBar: AppBar(title: const Text('Nearby mosques')),
-          body: const SafeArea(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(16),
-              child: LiveGuidePanel(view: GuideView.mosques),
-            ),
-          ),
-        ),
+        builder: (_) => const NearbyMosquesScreen(),
       ),
     );
   }
@@ -85,11 +87,15 @@ class _HomeScreenState extends State<HomeScreen> {
           child: FutureBuilder<LatLng>(
             future: _location,
             builder: (context, snapshot) {
-              final ready = snapshot.connectionState == ConnectionState.done;
+              final ready =
+                  snapshot.connectionState == ConnectionState.done;
+
               final point = ready ? snapshot.data : null;
+
               final locationKey = point == null
                   ? 'no-location'
-                  : '${point.latitude},${point.longitude}';
+                  : '$_refreshVersion:'
+                  '${point.latitude},${point.longitude}';
 
               return SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -103,18 +109,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       )
                     else
                       DynamicTopHeroSection(
-                        cityName: ready ? 'Location unavailable' : 'Locating…',
+                        cityName: ready
+                            ? 'Location unavailable'
+                            : 'Locating…',
                         temperature: '--°C',
-                        weatherStatus: ready ? 'Unavailable' : 'Loading',
+                        weatherStatus:
+                        ready ? 'Unavailable' : 'Loading',
                         nextPrayerName: ready ? '—' : 'Loading',
                         timeRemaining: '--:--:--',
                         sunProgress: 0,
                       ),
-
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                      ),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        crossAxisAlignment:
+                        CrossAxisAlignment.stretch,
                         children: [
                           const SizedBox(height: 20),
                           const TravelAssistantCard(),
@@ -126,13 +137,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           const DynamicCategories(),
 
                           const SizedBox(height: 28),
-                          // This existing widget also requests GPS.
-                          // Mount it after the Home location request completes.
-                          if (point != null) const DynamicPlaces(),
+                          if (point != null)
+                            const DynamicPlaces(),
 
                           const SizedBox(height: 28),
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            mainAxisAlignment:
+                            MainAxisAlignment.spaceBetween,
                             children: [
                               const Text(
                                 'NEARBY MASJIDS',
@@ -144,8 +155,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                               InkWell(
-                                onTap: _openAllMosques,
-                                borderRadius: BorderRadius.circular(8),
+                                onTap: point == null
+                                    ? null
+                                    : _openAllMosques,
+                                borderRadius:
+                                BorderRadius.circular(8),
                                 child: const Padding(
                                   padding: EdgeInsets.symmetric(
                                     horizontal: 4,
@@ -154,7 +168,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   child: Text(
                                     'View All',
                                     style: TextStyle(
-                                      color: AppColors.primaryColor,
+                                      color:
+                                      AppColors.primaryColor,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -169,14 +184,17 @@ class _HomeScreenState extends State<HomeScreen> {
                             const _HomeLoading()
                           else if (point == null)
                             _HomeNotice(
-                              message: snapshot.error is GuideException
+                              message:
+                              snapshot.error is GuideException
                                   ? '${snapshot.error}'
                                   : 'Could not get your location.',
                               onRetry: _refresh,
                             )
                           else
                             _NearbyPreview(
-                              key: ValueKey('nearby-$locationKey'),
+                              key: ValueKey(
+                                'nearby-$locationKey',
+                              ),
                               point: point,
                             ),
 
@@ -197,11 +215,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// Uses your original hero widget. Only the hero updates every second.
+// Existing hero design with live weather and prayer countdown.
 class _LiveHero extends StatefulWidget {
   final LatLng point;
 
-  const _LiveHero({super.key, required this.point});
+  const _LiveHero({
+    super.key,
+    required this.point,
+  });
 
   @override
   State<_LiveHero> createState() => _LiveHeroState();
@@ -209,6 +230,7 @@ class _LiveHero extends StatefulWidget {
 
 class _LiveHeroState extends State<_LiveHero> {
   Timer? _timer;
+
   late DateTime _day;
   late Future<PrayerDay> _today;
   Future<PrayerDay>? _tomorrow;
@@ -220,26 +242,39 @@ class _LiveHeroState extends State<_LiveHero> {
   @override
   void initState() {
     super.initState();
+
     _day = DateTime.now();
     _today = LiveGuideService.prayers(widget.point, _day);
     _city = _coordinateLabel();
+
     _loadWeather();
 
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      final now = DateTime.now();
-      setState(() {
-        if (LiveGuideService.dayKey(now) != LiveGuideService.dayKey(_day)) {
-          _day = now;
-          _today = LiveGuideService.prayers(widget.point, now);
-          _tomorrow = null;
-        }
-      });
-    });
+    _timer = Timer.periodic(
+      const Duration(seconds: 1),
+          (_) {
+        if (!mounted) return;
+
+        final now = DateTime.now();
+
+        setState(() {
+          if (LiveGuideService.dayKey(now) !=
+              LiveGuideService.dayKey(_day)) {
+            _day = now;
+            _today = LiveGuideService.prayers(
+              widget.point,
+              now,
+            );
+            _tomorrow = null;
+          }
+        });
+      },
+    );
   }
 
-  String _coordinateLabel() =>
-      '${widget.point.latitude.toStringAsFixed(2)}, '
-          '${widget.point.longitude.toStringAsFixed(2)}';
+  String _coordinateLabel() {
+    return '${widget.point.latitude.toStringAsFixed(2)}, '
+        '${widget.point.longitude.toStringAsFixed(2)}';
+  }
 
   Future<void> _loadWeather() async {
     await Future.wait<void>([
@@ -249,26 +284,35 @@ class _LiveHeroState extends State<_LiveHero> {
   }
 
   Future<void> _loadCityLabel() async {
-    final label = await LocationService.getCityName(
-      widget.point.latitude,
-      widget.point.longitude,
-    );
+    try {
+      final label = await LocationService.getCityName(
+        widget.point.latitude,
+        widget.point.longitude,
+      ).timeout(const Duration(seconds: 10));
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      _city = label;
-    });
+      setState(() {
+        _city = label.trim().isEmpty
+            ? _coordinateLabel()
+            : label;
+      });
+    } catch (_) {
+      // Keep GPS coordinates if the city lookup fails.
+    }
   }
 
   Future<void> _loadTemperature() async {
     try {
       final key = ApiConfig.weatherApiKey.trim();
+
       if (key.isEmpty) {
         throw const FormatException('Weather key missing.');
       }
 
-      final uri = Uri.parse(ApiConfig.weatherBaseUrl).replace(
+      final uri = Uri.parse(
+        ApiConfig.weatherBaseUrl,
+      ).replace(
         queryParameters: {
           'lat': widget.point.latitude.toString(),
           'lon': widget.point.longitude.toString(),
@@ -282,7 +326,9 @@ class _LiveHeroState extends State<_LiveHero> {
       );
 
       if (response.statusCode != 200) {
-        throw const FormatException('Weather request failed.');
+        throw const FormatException(
+          'Weather request failed.',
+        );
       }
 
       final data = jsonDecode(response.body);
@@ -290,24 +336,30 @@ class _LiveHeroState extends State<_LiveHero> {
       final conditions = data['weather'];
 
       if (temp is! num) {
-        throw const FormatException('Temperature missing.');
+        throw const FormatException(
+          'Temperature missing.',
+        );
       }
 
       String description = 'Weather';
+
       if (conditions is List && conditions.isNotEmpty) {
         final first = conditions.first;
+
         if (first is Map && first['main'] is String) {
           description = first['main'] as String;
         }
       }
 
       if (!mounted) return;
+
       setState(() {
         _temperature = '${temp.round()}°C';
         _weather = description;
       });
     } catch (_) {
       if (!mounted) return;
+
       setState(() {
         _temperature = '--°C';
         _weather = 'Unavailable';
@@ -316,25 +368,40 @@ class _LiveHeroState extends State<_LiveHero> {
   }
 
   String _countdown(DateTime next, DateTime now) {
-    final seconds = (next.difference(now).inMilliseconds / 1000).ceil();
+    final seconds =
+    (next.difference(now).inMilliseconds / 1000).ceil();
+
     final total = seconds < 0 ? 0 : seconds;
 
-    String two(int n) => n.toString().padLeft(2, '0');
+    String two(int number) {
+      return number.toString().padLeft(2, '0');
+    }
+
     return '${two(total ~/ 3600)}:'
         '${two((total ~/ 60) % 60)}:'
         '${two(total % 60)}';
   }
 
-  double _progress(DateTime? previous, DateTime next, DateTime now) {
+  double _progress(
+      DateTime? previous,
+      DateTime next,
+      DateTime now,
+      ) {
     if (previous == null) return 0;
+
     final interval = next.difference(previous).inSeconds;
     if (interval <= 0) return 0;
+
     return (now.difference(previous).inSeconds / interval)
         .clamp(0.0, 1.0)
         .toDouble();
   }
 
-  Widget _hero(String prayer, String remaining, double progress) {
+  Widget _hero(
+      String prayer,
+      String remaining,
+      double progress,
+      ) {
     return DynamicTopHeroSection(
       cityName: _city,
       temperature: _temperature,
@@ -346,13 +413,15 @@ class _LiveHeroState extends State<_LiveHero> {
   }
 
   Widget _scheduleError(VoidCallback retry) {
-    return Column(children: [
-      _hero('—', '--:--:--', 0),
-      _HomeNotice(
-        message: 'Prayer times unavailable.',
-        onRetry: retry,
-      ),
-    ]);
+    return Column(
+      children: [
+        _hero('—', '--:--:--', 0),
+        _HomeNotice(
+          message: 'Prayer times unavailable.',
+          onRetry: retry,
+        ),
+      ],
+    );
   }
 
   @override
@@ -360,22 +429,30 @@ class _LiveHeroState extends State<_LiveHero> {
     return FutureBuilder<PrayerDay>(
       future: _today,
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
+        if (snapshot.connectionState !=
+            ConnectionState.done) {
           return _hero('Loading', '--:--:--', 0);
         }
+
         if (snapshot.hasError || !snapshot.hasData) {
-          return _scheduleError(() => setState(() {
-            _today = LiveGuideService.prayers(widget.point, _day);
-          }));
+          return _scheduleError(() {
+            setState(() {
+              _today = LiveGuideService.prayers(
+                widget.point,
+                _day,
+              );
+            });
+          });
         }
 
         final times = snapshot.requireData.times;
         final now = DateTime.now();
         DateTime? previous;
 
-        // Sunrise is shown on the details screen, but is not a next prayer.
+        // Sunrise is not included as a next prayer.
         for (final name in LiveGuideService.prayerNames) {
           final next = DateTime.parse(times[name]!);
+
           if (next.isAfter(now)) {
             return _hero(
               name.toUpperCase(),
@@ -383,27 +460,46 @@ class _LiveHeroState extends State<_LiveHero> {
               _progress(previous, next, now),
             );
           }
+
           previous = next;
         }
 
-        // After Isha, count down to tomorrow's Fajr.
-        final tomorrow = DateTime(_day.year, _day.month, _day.day + 1);
+        final tomorrow = DateTime(
+          _day.year,
+          _day.month,
+          _day.day + 1,
+        );
+
         final isha = DateTime.parse(times['Isha']!);
-        _tomorrow ??= LiveGuideService.prayers(widget.point, tomorrow);
+
+        _tomorrow ??= LiveGuideService.prayers(
+          widget.point,
+          tomorrow,
+        );
 
         return FutureBuilder<PrayerDay>(
           future: _tomorrow,
           builder: (context, nextDay) {
-            if (nextDay.connectionState != ConnectionState.done) {
+            if (nextDay.connectionState !=
+                ConnectionState.done) {
               return _hero('FAJR', '--:--:--', 0);
             }
+
             if (nextDay.hasError || !nextDay.hasData) {
-              return _scheduleError(() => setState(() {
-                _tomorrow = LiveGuideService.prayers(widget.point, tomorrow);
-              }));
+              return _scheduleError(() {
+                setState(() {
+                  _tomorrow = LiveGuideService.prayers(
+                    widget.point,
+                    tomorrow,
+                  );
+                });
+              });
             }
 
-            final fajr = DateTime.parse(nextDay.requireData.times['Fajr']!);
+            final fajr = DateTime.parse(
+              nextDay.requireData.times['Fajr']!,
+            );
+
             return _hero(
               'FAJR',
               _countdown(fajr, now),
@@ -422,187 +518,265 @@ class _LiveHeroState extends State<_LiveHero> {
   }
 }
 
+// Masjidi + OpenStreetMap preview using the actual Home GPS.
 class _NearbyPreview extends StatefulWidget {
   final LatLng point;
 
-  const _NearbyPreview({super.key, required this.point});
+  const _NearbyPreview({
+    super.key,
+    required this.point,
+  });
 
   @override
-  State<_NearbyPreview> createState() => _NearbyPreviewState();
+  State<_NearbyPreview> createState() {
+    return _NearbyPreviewState();
+  }
 }
 
 class _NearbyPreviewState extends State<_NearbyPreview> {
-  late Future<List<Mosque>> _mosques;
+  late Future<NearbyMosqueResult> _mosques;
 
   @override
   void initState() {
     super.initState();
-    _mosques = LiveGuideService.nearby(widget.point);
+    _mosques = _fetch();
   }
 
-  Future<void> _openMap(Mosque mosque) async {
-    final point = mosque.point;
-    if (point == null) return;
+  Future<NearbyMosqueResult> _fetch() {
+    return NearbyMosqueService.instance.fetch(
+      widget.point.latitude,
+      widget.point.longitude,
+    );
+  }
 
+  void _retry() {
+    setState(() {
+      _mosques = _fetch();
+    });
+  }
+
+  Future<void> _launch(
+      Uri uri,
+      String failureMessage,
+      ) async {
+    try {
+      final opened = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (opened) return;
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(failureMessage)),
+    );
+  }
+
+  Future<void> _openMap(MosqueItem mosque) {
     final uri = Uri.https(
       'www.openstreetmap.org',
       '/',
       {
-        'mlat': point.latitude.toString(),
-        'mlon': point.longitude.toString(),
+        'mlat': mosque.latitude.toString(),
+        'mlon': mosque.longitude.toString(),
       },
-    ).replace(fragment: 'map=17/${point.latitude}/${point.longitude}');
+    ).replace(
+      fragment:
+      'map=17/${mosque.latitude}/${mosque.longitude}',
+    );
 
-    try {
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (opened) return;
-    } catch (_) {
-      // Show the same user-facing message if no handler is available.
-    }
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Could not open this mosque on the map.')),
+    return _launch(
+      uri,
+      'Could not open this mosque on the map.',
     );
   }
 
-  void _openSchedule(Mosque mosque) {
+  void _openSchedule(MosqueItem mosque) {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) => _MosqueScheduleSheet(mosque: mosque),
+      builder: (_) => _MosqueScheduleSheet(
+        mosque: mosque,
+      ),
+    );
+  }
+
+  Widget _card(MosqueItem mosque) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => _openSchedule(mosque),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Container(
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.mosque,
+                    color: Colors.grey,
+                    size: 30,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        mosque.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            color: AppColors.primaryColor,
+                            size: 15,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              '${mosque.distanceKm.toStringAsFixed(2)} km away',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textLight,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.grey.shade200,
+                    ),
+                  ),
+                  child: IconButton(
+                    tooltip: 'Open mosque on map',
+                    icon: const Icon(
+                      Icons.near_me_outlined,
+                      size: 18,
+                    ),
+                    color: AppColors.textDark,
+                    onPressed: () => _openMap(mosque),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<Mosque>>(
+    return FutureBuilder<NearbyMosqueResult>(
       future: _mosques,
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
+        if (snapshot.connectionState !=
+            ConnectionState.done) {
           return const _HomeLoading();
         }
+
         if (snapshot.hasError || !snapshot.hasData) {
           return _HomeNotice(
-            message: snapshot.error is GuideException
-                ? '${snapshot.error}'
-                : 'Could not load nearby mosques.',
-            onRetry: () => setState(() {
-              _mosques = LiveGuideService.nearby(widget.point);
-            }),
+            message: snapshot.error?.toString() ??
+                'Could not load nearby mosques.',
+            onRetry: _retry,
           );
         }
 
-        final mosques = snapshot.requireData;
-        if (mosques.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              'No mosques listed within 10 miles.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
-            ),
-          );
-        }
+
+        final result = snapshot.requireData;
+        final mosques = result.mosques;
 
         return Column(
           children: [
-            for (final mosque in mosques.take(2))
-              Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.08),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: () => _openSchedule(mosque),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 70,
-                            height: 70,
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(
-                              Icons.mosque,
-                              color: Colors.grey,
-                              size: 30,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  mosque.name,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: AppColors.textDark,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Row(children: [
-                                  const Icon(
-                                    Icons.location_on_outlined,
-                                    color: AppColors.primaryColor,
-                                    size: 15,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      mosque.distanceKm != null
-                                          ? '${mosque.distanceKm!.toStringAsFixed(1)} km away'
-                                          : 'Distance unavailable',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: AppColors.textLight,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ]),
-                              ],
-                            ),
-                          ),
-                          if (mosque.point != null)
-                            Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.grey.shade200),
-                              ),
-                              child: IconButton(
-                                tooltip: 'Open mosque on map',
-                                icon: const Icon(Icons.near_me_outlined, size: 18),
-                                color: AppColors.textDark,
-                                onPressed: () => _openMap(mosque),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
+            Text(
+              '${mosques.length} found within 15 km',
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.textLight,
+              ),
+            ),
+            for (final warning in result.warnings)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  warning,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.orange,
                   ),
                 ),
               ),
+            const SizedBox(height: 12),
+            if (mosques.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'No mapped mosques returned within 15 km.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            for (final mosque in mosques.take(2))
+              _card(mosque),
+            TextButton(
+              onPressed: () => _launch(
+                Uri.parse(
+                  'https://www.openstreetmap.org/copyright',
+                ),
+                'Could not open attribution link.',
+              ),
+              child: const Text(
+                '© OpenStreetMap contributors · ODbL',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppColors.textLight,
+                ),
+              ),
+            ),
           ],
         );
       },
@@ -611,22 +785,46 @@ class _NearbyPreviewState extends State<_NearbyPreview> {
 }
 
 class _MosqueScheduleSheet extends StatefulWidget {
-  final Mosque mosque;
-  const _MosqueScheduleSheet({required this.mosque});
+  final MosqueItem mosque;
+
+  const _MosqueScheduleSheet({
+    required this.mosque,
+  });
 
   @override
-  State<_MosqueScheduleSheet> createState() => _MosqueScheduleSheetState();
+  State<_MosqueScheduleSheet> createState() {
+    return _MosqueScheduleSheetState();
+  }
 }
 
-class _MosqueScheduleSheetState extends State<_MosqueScheduleSheet> {
+class _MosqueScheduleSheetState
+    extends State<_MosqueScheduleSheet> {
   late final DateTime _day;
   late Future<Map<String, String>> _schedule;
 
   @override
   void initState() {
     super.initState();
+
     _day = DateTime.now();
-    _schedule = LiveGuideService.jamaat(widget.mosque.id, _day);
+    _schedule = _loadSchedule();
+  }
+
+  Future<Map<String, String>> _loadSchedule() {
+    final id = widget.mosque.masjidiId;
+
+    // OSM IDs cannot be used as Masjidi IDs.
+    if (id == null) {
+      return Future.value(<String, String>{});
+    }
+
+    return LiveGuideService.jamaat(id, _day);
+  }
+
+  void _retry() {
+    setState(() {
+      _schedule = _loadSchedule();
+    });
   }
 
   @override
@@ -639,7 +837,10 @@ class _MosqueScheduleSheetState extends State<_MosqueScheduleSheet> {
           children: [
             Text(
               widget.mosque.name,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             if (widget.mosque.address.isNotEmpty)
               Text(widget.mosque.address),
@@ -654,37 +855,46 @@ class _MosqueScheduleSheetState extends State<_MosqueScheduleSheet> {
             FutureBuilder<Map<String, String>>(
               future: _schedule,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
+                if (snapshot.connectionState !=
+                    ConnectionState.done) {
                   return const _HomeLoading();
                 }
+
                 if (snapshot.hasError || !snapshot.hasData) {
                   return _HomeNotice(
                     message: snapshot.error is GuideException
                         ? '${snapshot.error}'
                         : 'Could not load the daily schedule.',
-                    onRetry: () => setState(() {
-                      _schedule = LiveGuideService.jamaat(widget.mosque.id, _day);
-                    }),
+                    onRetry: _retry,
                   );
                 }
 
                 final times = snapshot.requireData;
+
                 if (times.isEmpty) {
                   return const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Text('No jamaat times available for this date.'),
+                    child: Text(
+                      'Verified jamaat times are unavailable '
+                          'for this mosque and date.',
+                    ),
                   );
                 }
 
-                return Column(children: [
-                  for (final prayer in LiveGuideService.prayerNames)
-                    ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(prayer),
-                      trailing: Text(times[prayer] ?? 'Unavailable'),
-                    ),
-                ]);
+                return Column(
+                  children: [
+                    for (final prayer
+                    in LiveGuideService.prayerNames)
+                      ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(prayer),
+                        trailing: Text(
+                          times[prayer] ?? 'Unavailable',
+                        ),
+                      ),
+                  ],
+                );
               },
             ),
           ],
@@ -705,7 +915,9 @@ class _HomeLoading extends StatelessWidget {
         child: SizedBox(
           width: 22,
           height: 22,
-          child: CircularProgressIndicator(strokeWidth: 2),
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+          ),
         ),
       ),
     );
@@ -716,17 +928,25 @@ class _HomeNotice extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
 
-  const _HomeNotice({required this.message, required this.onRetry});
+  const _HomeNotice({
+    required this.message,
+    required this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(children: [
-      Text(
-        message,
-        textAlign: TextAlign.center,
-        style: const TextStyle(color: Colors.grey),
-      ),
-      TextButton(onPressed: onRetry, child: const Text('Retry')),
-    ]);
+    return Column(
+      children: [
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.grey),
+        ),
+        TextButton(
+          onPressed: onRetry,
+          child: const Text('Retry'),
+        ),
+      ],
+    );
   }
 }

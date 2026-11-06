@@ -4,7 +4,7 @@ import '../constants/app_colors.dart';
 import '../screens/category_places_screen.dart';
 import '../screens/map_discover/map_discover_screen.dart';
 import '../screens/prayer_qibla/prayer_qibla_screen.dart';
-import 'live_guide_panel.dart';
+import 'nearby_mosques_section.dart';
 
 class QuickActionsSection extends StatelessWidget {
   const QuickActionsSection({super.key});
@@ -13,15 +13,19 @@ class QuickActionsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     void openScreen(Widget screen) {
       Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => screen),
+        MaterialPageRoute<void>(
+          builder: (_) => screen,
+        ),
       );
     }
 
     void openCategory(String id, String name) {
-      openScreen(CategoryPlacesScreen(
-        categoryId: id,
-        categoryName: name,
-      ));
+      openScreen(
+        CategoryPlacesScreen(
+          categoryId: id,
+          categoryName: name,
+        ),
+      );
     }
 
     return Column(
@@ -51,71 +55,75 @@ class QuickActionsSection extends StatelessWidget {
               label: 'Masjids',
               icon: Icons.mosque,
               color: Colors.green,
-              onTap: () => openScreen(const _NearbyMosquesScreen()),
+              onTap: () {
+                openScreen(
+                  const NearbyMosquesScreen(),
+                );
+              },
             ),
             _ActionTile(
               label: 'Qibla',
               icon: Icons.explore,
               color: Colors.teal,
-              onTap: () => openScreen(const PrayerQiblaScreen()),
+              onTap: () {
+                openScreen(
+                  const PrayerQiblaScreen(),
+                );
+              },
             ),
             _ActionTile(
               label: 'Map',
               icon: Icons.map,
               color: Colors.blue,
-              onTap: () => openScreen(const MapDiscoverScreen()),
+              onTap: () {
+                openScreen(
+                  const MapDiscoverScreen(),
+                );
+              },
             ),
             _ActionTile(
               label: 'Restaurants',
               icon: Icons.restaurant,
               color: Colors.orange,
-              onTap: () => openCategory('1', 'Restaurants'),
+              onTap: () {
+                openCategory('1', 'Restaurants');
+              },
             ),
             _ActionTile(
               label: 'Grocery',
               icon: Icons.shopping_cart,
               color: Colors.green,
-              onTap: () => openCategory('2', 'Grocery'),
+              onTap: () {
+                openCategory('2', 'Grocery');
+              },
             ),
             _ActionTile(
               label: 'Butcher',
               icon: Icons.set_meal,
               color: Colors.redAccent,
-              onTap: () => openCategory('3', 'Butcher'),
+              onTap: () {
+                openCategory('3', 'Butcher');
+              },
             ),
             _ActionTile(
               label: 'Hotels',
               icon: Icons.hotel,
               color: Colors.purple,
-              onTap: () => openCategory('4', 'Hotels'),
+              onTap: () {
+                openCategory('4', 'Hotels');
+              },
             ),
             _ActionTile(
               label: 'Clinics',
               icon: Icons.local_hospital,
               color: Colors.blueAccent,
-              onTap: () => openCategory('5', 'Clinics'),
+              onTap: () {
+                openCategory('5', 'Clinics');
+              },
             ),
           ],
         ),
       ],
-    );
-  }
-}
-
-class _NearbyMosquesScreen extends StatelessWidget {
-  const _NearbyMosquesScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.backgroundColor,
-      appBar: AppBar(title: const Text('Nearby mosques')),
-      body: const SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(16),
-          child: LiveGuidePanel(view: GuideView.mosques),
-        ),
-      ),
     );
   }
 }
@@ -142,11 +150,18 @@ class _ActionTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 8),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 3,
+            vertical: 8,
+          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: color, size: 27),
+              Icon(
+                icon,
+                color: color,
+                size: 27,
+              ),
               const SizedBox(height: 7),
               Text(
                 label,
