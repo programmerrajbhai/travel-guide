@@ -1,28 +1,32 @@
-import 'dart:async';
-
-import 'package:flutter/foundation.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 
 class LocationService {
   static Future<Position?>? _pending;
+  static Position? _last;
+  static DateTime? _received;
 
-  // Keep the existing method signature used by Home, Map and Places.
+  static final _cities = <String, String>{};
+  static final _cityRequests = <String, Future<String>>{};
+
   static Future<Position?> getCurrentLocation() {
     final active = _pending;
     if (active != null) return active;
 
-    final request = _readPosition().whenComplete(() {
-      _pending = null;
+    late final Future<Position?> request;
+
+    request = _read().whenComplete(() {
+      if (identical(_pending, request)) {
+        _pending = null;
+      }
     });
 
     _pending = request;
     return request;
   }
 
-  static Future<Position?> _readPosition() async {
+  static Future<Position?> _read() async {
     if (!await Geolocator.isLocationServiceEnabled()) {
-      debugPrint('[TravelGuide GPS] Device location is off.');
       return null;
     }
 
@@ -34,8 +38,15 @@ class LocationService {
 
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
-      debugPrint('[TravelGuide GPS] Permission: $permission');
       return null;
+    }
+
+    // Reuse only a very recent fix from this app session.
+    if (_last != null &&
+        _received != null &&
+        DateTime.now().difference(_received!) <
+            const Duration(seconds: 10)) {
+      return _last;
     }
 
     final position = await Geolocator.getCurrentPosition(
@@ -45,46 +56,63 @@ class LocationService {
       ),
     );
 
-    if (kDebugMode) {
-      debugPrint(
-        '[TravelGuide GPS] '
-            'lat=${position.latitude.toStringAsFixed(5)}, '
-            'lng=${position.longitude.toStringAsFixed(5)}, '
-            'accuracy=${position.accuracy.round()} m',
-      );
-    }
+    _last = position;
+    _received = DateTime.now();
 
     return position;
   }
 
-  static Future<String> getCityName(double lat, double lng) async {
-    final coordinates =
-        '${lat.toStringAsFixed(3)}, ${lng.toStringAsFixed(3)}';
+  static Future<String> getCityName(
+      double lat,
+      double lng,
+      ) async {
+    final key =
+        '${lat.toStringAsFixed(3)},${lng.toStringAsFixed(3)}';
 
-    try {
-      final places = await placemarkFromCoordinates(lat, lng)
-          .timeout(const Duration(seconds: 8));
-
-      if (places.isEmpty) return coordinates;
-
-      final place = places.first;
-      final city = [
-        place.locality,
-        place.subAdministrativeArea,
-        place.administrativeArea,
-      ].whereType<String>()
-          .map((value) => value.trim())
-          .firstWhere((value) => value.isNotEmpty, orElse: () => '');
-
-      final country = (place.isoCountryCode ?? '').trim();
-      final label = [
-        if (city.isNotEmpty) city,
-        if (country.isNotEmpty) country,
-      ].join(', ');
-
-      return label.isEmpty ? coordinates : label;
-    } catch (_) {
-      return coordinates;
+    if (_cities.containsKey(key)) {
+      return _cities[key]!;
     }
+
+    return _cityRequests.putIfAbsent(key, () async {
+      try {
+        final places = await placemarkFromCoordinates(
+          lat,
+          lng,
+        ).timeout(const Duration(seconds: 8));
+
+        if (places.isNotEmpty) {
+          final p = places.first;
+
+          final area = [
+            p.locality,
+            p.subAdministrativeArea,
+            p.administrativeArea,
+          ]
+              .whereType<String>()
+              .where((s) => s.trim().isNotEmpty);
+
+          if (area.isNotEmpty) {
+            final country =
+                p.isoCountryCode ?? p.country ?? '';
+
+            final label = country.isEmpty
+                ? area.first
+                : '${area.first}, $country';
+
+            if (_cities.length >= 32) {
+              _cities.remove(_cities.keys.first);
+            }
+
+            _cities[key] = label;
+            return label;
+          }
+        }
+      } catch (_) {}
+
+      return '${lat.toStringAsFixed(3)}, '
+          '${lng.toStringAsFixed(3)}';
+    }).whenComplete(() {
+      _cityRequests.remove(key);
+    });
   }
 }

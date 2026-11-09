@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/backend_service.dart';
 import '../constants/app_colors.dart';
-import 'place_map_screen.dart'; // ম্যাপ স্ক্রিন ইমপোর্ট করা হলো
+import 'business_detail/business_detail_screen.dart';
 
 class CategoryPlacesScreen extends StatefulWidget {
   final String categoryId;
@@ -23,170 +23,7 @@ class _CategoryPlacesScreenState extends State<CategoryPlacesScreen> {
   @override
   void initState() {
     super.initState();
-    // ডাটাবেস থেকে সব প্লেস ফেচ করা হচ্ছে
     _placesFuture = BackendService.fetchPlaces();
-  }
-
-  // স্টাইলিশ কার্ভড বটম শিট
-  void _showPlaceDetailsBottomSheet(BuildContext context, dynamic place) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent, // ট্রান্সপারেন্ট ব্যাকগ্রাউন্ড কার্ভড কর্নারের জন্য
-      builder: (context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.75,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ড্র্যাগ হ্যান্ডেল
-              Center(
-                child: Container(
-                  margin: const EdgeInsets.only(top: 12, bottom: 12),
-                  height: 5,
-                  width: 50,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-
-              // প্লেসের ছবি (Curved)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: Image.network(
-                    place['image'],
-                    height: 220,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(
-                      height: 220,
-                      color: Colors.grey[200],
-                      child: const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // নাম এবং ক্যাটাগরি ব্যাজ
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        place['name'],
-                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textDark),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        place['category_name'] ?? widget.categoryName,
-                        style: const TextStyle(color: AppColors.primaryColor, fontWeight: FontWeight.bold, fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              // লোকেশন টেক্সট
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: Row(
-                  children: [
-                    const Icon(Icons.location_on, color: Colors.grey, size: 18),
-                    const SizedBox(width: 4),
-                    Text(
-                      "${place['latitude']}, ${place['longitude']}",
-                      style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // ডেসক্রিপশন
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20.0),
-                child: Text(
-                  "About this place",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textDark),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: Text(
-                    place['description'] ?? 'No description available.',
-                    style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.5),
-                  ),
-                ),
-              ),
-
-              // গেট ডিরেকশন বাটন (ম্যাপে যাওয়ার লজিকসহ)
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          // String থেকে Double এ কনভার্ট করা
-                          double lat = double.tryParse(place['latitude'].toString()) ?? 0.0;
-                          double lng = double.tryParse(place['longitude'].toString()) ?? 0.0;
-
-                          // ম্যাপ স্ক্রিনে নেভিগেশন
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => PlaceMapScreen(
-                                placeName: place['name'],
-                                latitude: lat,
-                                longitude: lng,
-                              ),
-                            ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryColor,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          elevation: 0,
-                        ),
-                        child: const Text('Get Directions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 
   @override
@@ -202,20 +39,16 @@ class _CategoryPlacesScreenState extends State<CategoryPlacesScreen> {
           widget.categoryName,
           style: const TextStyle(color: AppColors.textDark, fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
-        ),
       ),
       body: FutureBuilder<List<dynamic>>(
         future: _placesFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator(color: AppColors.primaryColor));
           } else if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(child: Text("No places available."));
           }
 
-          // নির্দিষ্ট ক্যাটাগরি আইডি অনুযায়ী প্লেস ফিল্টার করা
           final categoryPlaces = snapshot.data!.where((place) {
             return place['category_id'].toString() == widget.categoryId.toString();
           }).toList();
@@ -225,9 +58,9 @@ class _CategoryPlacesScreenState extends State<CategoryPlacesScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.inbox, size: 60, color: Colors.grey[300]),
+                  Icon(Icons.inbox_outlined, size: 60, color: Colors.grey[300]),
                   const SizedBox(height: 10),
-                  Text("No places found in ${widget.categoryName}", style: const TextStyle(color: Colors.grey)),
+                  Text("No places found in ${widget.categoryName}", style: const TextStyle(color: Colors.grey, fontSize: 16)),
                 ],
               ),
             );
@@ -240,56 +73,125 @@ class _CategoryPlacesScreenState extends State<CategoryPlacesScreen> {
             itemBuilder: (context, index) {
               final place = categoryPlaces[index];
               return GestureDetector(
-                onTap: () => _showPlaceDetailsBottomSheet(context, place),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => BusinessDetailScreen(
+                        placeData: Map<String, dynamic>.from(place),
+                      ),
+                    ),
+                  );
+                },
                 child: Container(
-                  margin: const EdgeInsets.only(bottom: 20),
+                  margin: const EdgeInsets.only(bottom: 24),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(24), // দারুণ কার্ভড ডিজাইন
+                    borderRadius: BorderRadius.circular(20),
                     boxShadow: [
-                      BoxShadow(color: Colors.grey.withOpacity(0.15), blurRadius: 15, offset: const Offset(0, 8))
+                      BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15, offset: const Offset(0, 8))
                     ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                        child: Image.network(
-                          place['image'],
-                          height: 200,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            height: 200,
-                            color: Colors.grey[200],
-                            child: const Icon(Icons.image_not_supported, color: Colors.grey),
+                      // Image & Badges
+                      Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                            child: Image.network(
+                              place['image']?.toString() ?? '',
+                              height: 200,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                height: 200,
+                                color: Colors.grey[200],
+                                child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 40),
+                              ),
+                            ),
                           ),
-                        ),
+                          // Category Badge
+                          Positioned(
+                            top: 16,
+                            left: 16,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(color: Colors.black.withOpacity(0.7), borderRadius: BorderRadius.circular(20)),
+                              child: Text(
+                                place['category_name']?.toString() ?? widget.categoryName,
+                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                          // Rating Badge
+                          Positioned(
+                            top: 16,
+                            right: 16,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                              child: Row(
+                                children: const [
+                                  Icon(Icons.star, color: Colors.orange, size: 14),
+                                  SizedBox(width: 4),
+                                  Text('4.8', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+                      // Details Section
                       Padding(
                         padding: const EdgeInsets.all(20.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              place['name'],
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.textDark),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    place['name']?.toString() ?? 'Unknown Place',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: AppColors.textDark),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const Icon(Icons.favorite_border, color: Colors.grey, size: 22),
+                              ],
                             ),
                             const SizedBox(height: 8),
                             Row(
                               children: [
-                                const Icon(Icons.location_on, size: 16, color: Colors.grey),
-                                const SizedBox(width: 4),
+                                const Icon(Icons.location_on, size: 16, color: AppColors.primaryColor),
+                                const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
-                                    "${place['latitude']}, ${place['longitude']}",
-                                    style: const TextStyle(color: Colors.grey, fontSize: 13),
+                                    "${place['latitude'] ?? ''}, ${place['longitude'] ?? ''} • 2.5 km away",
+                                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            // Tags
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+                                  child: const Text('Open Now', style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold)),
+                                ),
+                                const SizedBox(width: 10),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+                                  child: const Text('Halal Verified', style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold)),
                                 ),
                               ],
                             )

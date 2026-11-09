@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/backend_service.dart';
 import '../constants/app_colors.dart';
+import 'business_detail/business_detail_screen.dart';
 
 class AllPlacesScreen extends StatefulWidget {
   const AllPlacesScreen({Key? key}) : super(key: key);
@@ -16,105 +17,6 @@ class _AllPlacesScreenState extends State<AllPlacesScreen> {
   void initState() {
     super.initState();
     _placesFuture = BackendService.fetchPlaces();
-  }
-
-  void _showPlaceDetailsBottomSheet(BuildContext context, dynamic place) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.75,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  margin: const EdgeInsets.only(top: 12, bottom: 12),
-                  height: 5,
-                  width: 50,
-                  decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: Image.network(
-                    place['image'], height: 220, width: double.infinity, fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(height: 220, color: Colors.grey[200], child: const Icon(Icons.image_not_supported, size: 50, color: Colors.grey)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(child: Text(place['name'], style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textDark))),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: AppColors.primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                      child: Text(place['category_name'] ?? 'Place', style: const TextStyle(color: AppColors.primaryColor, fontWeight: FontWeight.bold, fontSize: 12)),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: Row(
-                  children: [
-                    const Icon(Icons.location_on, color: Colors.grey, size: 18),
-                    const SizedBox(width: 4),
-                    Text("Lat: ${place['latitude']}, Lng: ${place['longitude']}", style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500)),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20.0),
-                child: Text("About this place", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textDark)),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: Text(place['description'] ?? 'No description available.', style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.5)),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryColor,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          elevation: 0,
-                        ),
-                        child: const Text('Get Directions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 
   @override
@@ -135,7 +37,7 @@ class _AllPlacesScreenState extends State<AllPlacesScreen> {
         future: _placesFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator(color: AppColors.primaryColor));
           } else if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(child: Text("No places available."));
           }
@@ -148,26 +50,75 @@ class _AllPlacesScreenState extends State<AllPlacesScreen> {
             itemBuilder: (context, index) {
               final place = places[index];
               return GestureDetector(
-                onTap: () => _showPlaceDetailsBottomSheet(context, place),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => BusinessDetailScreen(
+                        placeData: Map<String, dynamic>.from(place),
+                      ),
+                    ),
+                  );
+                },
                 child: Container(
-                  margin: const EdgeInsets.only(bottom: 20),
+                  margin: const EdgeInsets.only(bottom: 24),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 15, offset: const Offset(0, 5))],
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15, offset: const Offset(0, 8))
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                        child: Image.network(
-                          place['image'], height: 180, width: double.infinity, fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(height: 180, color: Colors.grey[200], child: const Icon(Icons.image_not_supported, color: Colors.grey)),
-                        ),
+                      Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                            child: Image.network(
+                              place['image']?.toString() ?? '',
+                              height: 200,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                height: 200,
+                                color: Colors.grey[200],
+                                child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 40),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 16,
+                            left: 16,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(color: Colors.black.withOpacity(0.7), borderRadius: BorderRadius.circular(20)),
+                              child: Text(
+                                place['category_name']?.toString() ?? 'Place',
+                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 16,
+                            right: 16,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                              child: Row(
+                                children: const [
+                                  Icon(Icons.star, color: Colors.orange, size: 14),
+                                  SizedBox(width: 4),
+                                  Text('4.8', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       Padding(
-                        padding: const EdgeInsets.all(16.0),
+                        padding: const EdgeInsets.all(20.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -175,21 +126,49 @@ class _AllPlacesScreenState extends State<AllPlacesScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Expanded(
-                                  child: Text(place['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.textDark), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  child: Text(
+                                    place['name']?.toString() ?? 'Unknown Place',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: AppColors.textDark),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(color: AppColors.primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                                  child: Text(place['category_name'] ?? '', style: const TextStyle(color: AppColors.primaryColor, fontSize: 10, fontWeight: FontWeight.bold)),
-                                )
+                                const Icon(Icons.favorite_border, color: Colors.grey, size: 22),
                               ],
                             ),
                             const SizedBox(height: 8),
                             Row(
                               children: [
-                                const Icon(Icons.location_on, size: 16, color: Colors.grey),
-                                const SizedBox(width: 4),
-                                Text("${place['latitude']}, ${place['longitude']}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                                const Icon(Icons.location_on, size: 16, color: AppColors.primaryColor),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    "${place['latitude'] ?? ''}, ${place['longitude'] ?? ''} • 2.5 km away",
+                                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+                                  child: const Text('Open Now', style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold)),
+                                ),
+
+                                const SizedBox(width: 10),
+
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+                                  child: const Text('Halal Verified', style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold)),
+                                ),
+
                               ],
                             )
                           ],

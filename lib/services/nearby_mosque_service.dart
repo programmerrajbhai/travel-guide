@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NearbyMosqueException implements Exception {
   final String message;
@@ -18,17 +19,10 @@ class NearbyMosqueException implements Exception {
 }
 
 class MosqueItem {
-  final String key;
-  final String name;
-  final String address;
+  final String key, name, address;
   final String? masjidiId;
-
-  final double latitude;
-  final double longitude;
-  final double distanceKm;
-
-  final Set<String> names;
-  final Set<String> sources;
+  final double latitude, longitude, distanceKm;
+  final Set<String> names, sources;
 
   const MosqueItem({
     required this.key,
@@ -64,11 +58,16 @@ class MosqueItem {
 class NearbyMosqueResult {
   final List<MosqueItem> mosques;
   final List<String> warnings;
+  final bool isRefreshing, isStale;
+  final DateTime? updatedAt;
 
   const NearbyMosqueResult(
       this.mosques,
-      this.warnings,
-      );
+      this.warnings, {
+        this.isRefreshing = false,
+        this.isStale = false,
+        this.updatedAt,
+      });
 }
 
 typedef _Source = ({
@@ -77,159 +76,428 @@ String? warning,
 bool failed,
 });
 
+class _SavedSource {
+  // null = never loaded successfully; [] = valid empty result.
+  final List<MosqueItem>? items;
+  final DateTime? savedAt;
+  final DateTime triedAt, nextTry;
+  final String? error;
+  final bool partial;
+
+  const _SavedSource({
+    this.items,
+    this.savedAt,
+    required this.triedAt,
+    required this.nextTry,
+    this.error,
+    this.partial = false,
+  });
+}
+
 class NearbyMosqueService {
   static final instance = NearbyMosqueService();
 
-  // Mac-এর Wi-Fi IP পরিবর্তন হলে এখানে পরিবর্তন করবে।
+  // Mac-এর Wi-Fi IP পরিবর্তন হলে শুধু এই URL পরিবর্তন করবে।
   static const proxy =
       'http://192.168.1.102/travel_admin/masjidi.php';
 
   static const radiusKm = 15.0;
+  static const _diskKey = 'travel_guide_mosques_v3';
+  static const _sources = ['Masjidi', 'OpenStreetMap'];
+  static const _maxAge = Duration(hours: 24);
 
   final http.Client? _client;
+  final Future<String?> Function() _readDisk;
+  final Future<void> Function(String) _writeDisk;
 
+  final _cache = <String, Map<String, _SavedSource>>{};
+  final _jobs = <String, Future<_SavedSource>>{};
   final _blockedUntil = <String, DateTime>{};
 
-  final _cache =
-  <String, ({DateTime until, List<_Source> data})>{};
+  Future<void>? _loaded;
+  Future<void> _writing = Future.value();
 
-  final _pending = <String, Future<List<_Source>>>{};
+  NearbyMosqueService({
+    http.Client? client,
+    Future<String?> Function()? readCache,
+    Future<void> Function(String)? writeCache,
+  }) : _client = client,
+        _readDisk = readCache ??
+            (() => SharedPreferencesAsync().getString(_diskKey)),
+        _writeDisk = writeCache ??
+            ((value) =>
+                SharedPreferencesAsync().setString(_diskKey, value));
 
-  NearbyMosqueService({http.Client? client})
-      : _client = client;
+  // Compatibility for older callers.
+  Future<NearbyMosqueResult> fetch(double lat, double lng) {
+    return watch(lat, lng).last;
+  }
 
-  Future<NearbyMosqueResult> fetch(
-      double latitude,
-      double longitude,
-      ) async {
-    if (!_valid(latitude, longitude)) {
-      throw const NearbyMosqueException(
-        'Invalid GPS coordinates.',
-      );
+  // Cached data first; then publish each provider's result separately.
+  Stream<NearbyMosqueResult> watch(
+      double lat,
+      double lng, {
+        bool force = false,
+      }) async* {
+    if (!_valid(lat, lng)) {
+      throw const NearbyMosqueException('Invalid GPS coordinates.');
     }
 
-    print(
-      '[TravelGuide Nearby v2] Search 15 km '
-          'from $latitude,$longitude',
+    await (_loaded ??= _loadDisk());
+
+    final a = lat.toStringAsFixed(3);
+    final b = lng.toStringAsFixed(3);
+    final key = '$a,$b';
+    final now = DateTime.now();
+
+    final saved =
+    Map<String, _SavedSource>.from(_cache[key] ?? {});
+
+    saved.removeWhere(
+          (_, item) =>
+      item.savedAt != null &&
+          now.difference(item.savedAt!) > _maxAge,
     );
 
-    // ছোট GPS পরিবর্তনে একই এলাকার request share করা হয়।
-    final lat = latitude.toStringAsFixed(3);
-    final lng = longitude.toStringAsFixed(3);
-    final cacheKey = '$lat,$lng';
+    final needed = _sources.where((source) {
+      final slot = saved[source];
 
-    final cached = _cache[cacheKey];
-    late List<_Source> results;
+      return slot == null ||
+          !now.isBefore(slot.nextTry) ||
+          (force &&
+              slot.error == null &&
+              now.difference(slot.triedAt) >=
+                  const Duration(seconds: 30));
+    }).toList();
 
-    if (cached != null &&
-        DateTime.now().isBefore(cached.until)) {
-      results = cached.data;
-    } else {
-      final request = _pending.putIfAbsent(
-        cacheKey,
-            () => Future.wait([
-          _safe(
-            'Masjidi',
-                () => _masjidi(lat, lng),
+    if (saved.values.any((item) => item.items != null)) {
+      yield _result(saved, lat, lng, needed.isNotEmpty);
+    }
+
+    if (needed.isEmpty) {
+      if (!saved.values.any((item) => item.items != null)) {
+        throw NearbyMosqueException(
+          saved.values
+              .map((v) => v.error)
+              .whereType<String>()
+              .join('\n'),
+        );
+      }
+      return;
+    }
+
+    final controller = StreamController<NearbyMosqueResult>();
+    var remaining = needed.length;
+
+    void publish() {
+      if (controller.isClosed) return;
+
+      if (saved.values.any((item) => item.items != null)) {
+        controller.add(_result(saved, lat, lng, remaining > 0));
+      } else if (remaining == 0) {
+        controller.addError(
+          NearbyMosqueException(
+            saved.values
+                .map((v) => v.error)
+                .whereType<String>()
+                .join('\n'),
           ),
-          _safe(
-            'OpenStreetMap',
-                () => _osm(lat, lng),
-          ),
-        ]),
-      );
+        );
+      }
 
-      try {
-        results = await request;
-
-        if (_cache.length >= 20) {
-          _cache.remove(_cache.keys.first);
-        }
-
-        final partial =
-        results.any((result) => result.warning != null);
-
-        // দুই API-ই ব্যর্থ হলে সেই failure cache করব না।
-        if (results.any((result) => !result.failed)) {
-          _cache[cacheKey] = (
-          until: DateTime.now().add(
-            Duration(seconds: partial ? 30 : 600),
-          ),
-          data: results,
-          );
-        }
-      } finally {
-        if (identical(_pending[cacheKey], request)) {
-          _pending.remove(cacheKey);
-        }
+      if (remaining == 0) {
+        unawaited(controller.close());
       }
     }
 
-    if (results.every((result) => result.failed)) {
-      throw NearbyMosqueException(
-        results
-            .map((result) => result.warning)
-            .whereType<String>()
-            .join('\n\n'),
-      );
+    for (final source in needed) {
+      _sourceJob(key, source, a, b).then((slot) {
+        saved[source] = slot;
+        remaining--;
+        publish();
+      });
     }
 
-    final merged = <MosqueItem>[];
+    try {
+      yield* controller.stream;
+    } finally {
+      // Screen বন্ধ হলেও shared request cache update করতে পারবে।
+      if (!controller.isClosed) {
+        unawaited(controller.close());
+      }
+    }
+  }
 
-    for (final source in results) {
-      for (final item in source.items) {
-        // Distance সবসময় বর্তমান GPS থেকে হিসাব হবে।
+  Future<_SavedSource> _sourceJob(
+      String key,
+      String source,
+      String lat,
+      String lng,
+      ) {
+    final jobKey = '$key|$source';
+    final existing = _jobs[jobKey];
+    if (existing != null) return existing;
+
+    late final Future<_SavedSource> job;
+
+    job = (() async {
+      final answer = await _safe(
+        source,
+            () => source == 'Masjidi'
+            ? _masjidi(lat, lng)
+            : _osm(lat, lng),
+      );
+
+      final now = DateTime.now();
+      final previous = _cache[key]?[source];
+      final usable = previous?.savedAt != null &&
+          now.difference(previous!.savedAt!) <= _maxAge;
+
+      // Success: 10 minutes.
+      // Partial response: 1 minute.
+      // Failure: 2 minutes before trying again.
+      var nextTry = now.add(
+        Duration(
+          seconds: answer.failed
+              ? 120
+              : answer.warning != null
+              ? 60
+              : 600,
+        ),
+      );
+
+      final hosts = source == 'Masjidi'
+          ? [Uri.parse(proxy).host]
+          : ['overpass-api.de', 'overpass.private.coffee'];
+
+      for (final host in hosts) {
+        final blocked = _blockedUntil[host];
+        if (blocked != null && blocked.isAfter(nextTry)) {
+          nextTry = blocked;
+        }
+      }
+
+      final slot = _SavedSource(
+        items: answer.failed
+            ? (usable ? previous.items : null)
+            : answer.items,
+        savedAt: answer.failed
+            ? (usable ? previous.savedAt : null)
+            : now,
+        triedAt: now,
+        nextTry: nextTry,
+        error: answer.failed ? answer.warning : null,
+        partial: answer.failed
+            ? (usable && previous.partial)
+            : answer.warning != null,
+      );
+
+      (_cache[key] ??= {})[source] = slot;
+
+      // Keep the latest 10 searched areas.
+      while (_cache.length > 10) {
+        _cache.remove(_cache.keys.first);
+      }
+
+      _queueSave();
+      return slot;
+    })().whenComplete(() {
+      if (identical(_jobs[jobKey], job)) {
+        _jobs.remove(jobKey);
+      }
+    });
+
+    _jobs[jobKey] = job;
+    return job;
+  }
+
+  NearbyMosqueResult _result(
+      Map<String, _SavedSource> saved,
+      double lat,
+      double lng,
+      bool refreshing,
+      ) {
+    final merged = <MosqueItem>[];
+    final notes = <String>[];
+    DateTime? oldest;
+    var stale = false;
+
+    for (final source in _sources) {
+      final slot = saved[source];
+      if (slot == null) continue;
+
+      if (slot.error != null) {
+        notes.add(
+          '$source unavailable. Showing available results.',
+        );
+      }
+
+      if (slot.items == null) continue;
+
+      if (slot.partial) {
+        notes.add('$source returned an incomplete list.');
+      }
+
+      final date = slot.savedAt!;
+
+      if (oldest == null || date.isBefore(oldest)) {
+        oldest = date;
+      }
+
+      if (DateTime.now().difference(date) >=
+          const Duration(minutes: 10)) {
+        stale = true;
+      }
+
+      for (final item in slot.items!) {
         final km = distance(
-          latitude,
-          longitude,
-          item.latitude,
-          item.longitude,
+          lat, lng, item.latitude, item.longitude,
         );
 
         if (km > radiusKm) continue;
 
         final candidate = item.copy(distanceKm: km);
-
-        final index = merged.indexWhere(
-              (existing) => _same(existing, candidate),
-        );
+        final index =
+        merged.indexWhere((old) => _same(old, candidate));
 
         if (index < 0) {
           merged.add(candidate);
         } else {
-          final existing = merged[index];
-
-          merged[index] = existing.copy(
-            sources: {
-              ...existing.sources,
-              ...candidate.sources,
-            },
+          merged[index] = merged[index].copy(
             names: {
-              ...existing.names,
+              ...merged[index].names,
               ...candidate.names,
+            },
+            sources: {
+              ...merged[index].sources,
+              ...candidate.sources,
             },
           );
         }
       }
     }
 
-    merged.sort(
-          (a, b) => a.distanceKm.compareTo(b.distanceKm),
-    );
-
-    print(
-      '[TravelGuide Nearby v2] '
-          '${merged.length} results within 15 km',
-    );
+    merged.sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
 
     return NearbyMosqueResult(
       List.unmodifiable(merged),
-      [
-        for (final result in results)
-          if (result.warning != null) result.warning!,
-      ],
+      notes,
+      isRefreshing: refreshing,
+      isStale: stale,
+      updatedAt: oldest,
     );
   }
+
+  Future<void> _loadDisk() async {
+    try {
+      final text =
+      await _readDisk().timeout(const Duration(seconds: 2));
+
+      if (text == null) return;
+
+      final decoded = jsonDecode(text);
+      if (decoded is! Map) return;
+
+      for (final cell in decoded.entries.take(10)) {
+        try {
+          final slots = <String, _SavedSource>{};
+
+          for (final source in _sources) {
+            final row = cell.value[source];
+            if (row is! Map) continue;
+
+            final date =
+            DateTime.tryParse('${row['savedAt']}');
+
+            if (date != null &&
+                (date.isAfter(DateTime.now()) ||
+                    DateTime.now().difference(date) > _maxAge)) {
+              continue;
+            }
+
+            final items = row['items'] is List
+                ? (row['items'] as List).map((m) {
+              final lat = (m['lat'] as num).toDouble();
+              final lng = (m['lng'] as num).toDouble();
+
+              if (!_valid(lat, lng)) {
+                throw const FormatException(
+                  'Cache coordinates',
+                );
+              }
+
+              return MosqueItem(
+                key: m['key'],
+                name: m['name'],
+                address: m['address'],
+                masjidiId: m['masjidiId'],
+                latitude: lat,
+                longitude: lng,
+                names: Set<String>.from(m['names']),
+                sources: Set<String>.from(m['sources']),
+              );
+            }).toList()
+                : null;
+
+            if (items != null && date == null) continue;
+
+            slots[source] = _SavedSource(
+              items: items,
+              savedAt: date,
+              triedAt: DateTime.parse(row['triedAt']),
+              nextTry: DateTime.parse(row['nextTry']),
+              error: row['error'],
+              partial: row['partial'] == true,
+            );
+          }
+
+          _cache[cell.key.toString()] = slots;
+        } catch (_) {
+          // Skip damaged cache cells.
+        }
+      }
+    } catch (_) {
+      // Storage failure must not block network loading.
+    }
+  }
+
+  void _queueSave() {
+    _writing = _writing.then((_) async {
+      final document = _cache.map(
+            (key, sources) => MapEntry(
+          key,
+          sources.map(
+                (source, slot) => MapEntry(source, {
+              'savedAt': slot.savedAt?.toIso8601String(),
+              'triedAt': slot.triedAt.toIso8601String(),
+              'nextTry': slot.nextTry.toIso8601String(),
+              'error': slot.error,
+              'partial': slot.partial,
+              'items': slot.items?.map((m) => {
+                'key': m.key,
+                'name': m.name,
+                'address': m.address,
+                'masjidiId': m.masjidiId,
+                'lat': m.latitude,
+                'lng': m.longitude,
+                'names': m.names.toList(),
+                'sources': m.sources.toList(),
+              }).toList(),
+            }),
+          ),
+        ),
+      );
+
+      final encoded = jsonEncode(document);
+      if (encoded.length <= 2000000) {
+        await _writeDisk(encoded);
+      }
+    }).catchError((Object error) {
+      print('[Nearby cache] Save unavailable: $error');
+    });
+  }
+
+  Future<void> flushCache() => _writing;
 
   Future<_Source> _safe(
       String source,
@@ -239,19 +507,17 @@ class NearbyMosqueService {
       final result = await load();
 
       print(
-        '[TravelGuide Nearby v2] '
+        '[TravelGuide Nearby v3] '
             '$source: ${result.items.length} records',
       );
 
       return result;
     } catch (error) {
-      final reason = error
-          .toString()
-          .replaceFirst('Exception: ', '');
-
+      final reason =
+      error.toString().replaceFirst('Exception: ', '');
       final message = '$source: $reason';
 
-      print('[TravelGuide Nearby v2] $message');
+      print('[TravelGuide Nearby v3] $message');
 
       return (
       items: <MosqueItem>[],
@@ -269,8 +535,7 @@ class NearbyMosqueService {
       }) async {
     final blocked = _blockedUntil[uri.host];
 
-    if (blocked != null &&
-        DateTime.now().isBefore(blocked)) {
+    if (blocked != null && DateTime.now().isBefore(blocked)) {
       final seconds =
           blocked.difference(DateTime.now()).inSeconds + 1;
 
@@ -284,7 +549,7 @@ class NearbyMosqueService {
     final method = query == null ? 'GET' : 'POST';
 
     print(
-      '[TravelGuide Nearby v2] '
+      '[TravelGuide Nearby v3] '
           '$method ${uri.host}${uri.path}',
     );
 
@@ -307,20 +572,17 @@ class NearbyMosqueService {
       ).timeout(timeout);
 
       print(
-        '[TravelGuide Nearby v2] '
-            '${uri.host}: HTTP ${response.statusCode}, '
+        '[TravelGuide Nearby v3] ${uri.host}: '
+            'HTTP ${response.statusCode}, '
             '${response.bodyBytes.length} bytes, '
             '${watch.elapsedMilliseconds} ms',
       );
 
-      // Busy/rate-limited server-এ সঙ্গে সঙ্গে retry নয়।
       if (response.statusCode == 429 ||
           response.statusCode == 406) {
-        final requested = int.tryParse(
-          response.headers['retry-after'] ?? '',
-        ) ??
-            60;
-
+        final requested =
+            int.tryParse(response.headers['retry-after'] ?? '') ??
+                60;
         final seconds = math.max(30, requested);
 
         _blockedUntil[uri.host] = DateTime.now().add(
@@ -328,8 +590,8 @@ class NearbyMosqueService {
         );
 
         throw NearbyMosqueException(
-          'HTTP ${response.statusCode}: server busy. '
-              'Retry after $seconds seconds.',
+          'HTTP ${response.statusCode}: '
+              'server busy. Retry after $seconds seconds.',
         );
       }
 
@@ -338,10 +600,7 @@ class NearbyMosqueService {
       }
 
       final body = utf8
-          .decode(
-        response.bodyBytes,
-        allowMalformed: true,
-      )
+          .decode(response.bodyBytes, allowMalformed: true)
           .replaceFirst(RegExp(r'^\uFEFF'), '')
           .trim();
 
@@ -350,22 +609,20 @@ class NearbyMosqueService {
       if (body.isNotEmpty) {
         try {
           decoded = jsonDecode(body);
-        } catch (_) {
-          // নিচে পরিষ্কার JSON error দেখানো হবে।
-        }
+        } catch (_) {}
       }
 
       if (response.statusCode != 200) {
-        String detail = '';
-
-        if (decoded is Map && decoded['error'] is String) {
-          final message = decoded['error'] as String;
-
-          detail = ': ${message.substring(
-            0,
-            math.min(180, message.length),
-          )}';
-        }
+        final detail = decoded is Map &&
+            decoded['error'] is String
+            ? ': ${(decoded['error'] as String).substring(
+          0,
+          math.min(
+            180,
+            (decoded['error'] as String).length,
+          ),
+        )}'
+            : '';
 
         throw NearbyMosqueException(
           'HTTP ${response.statusCode}$detail',
@@ -396,33 +653,25 @@ class NearbyMosqueService {
       );
     } on http.ClientException catch (error) {
       final message = error.message;
-      final short = message.substring(
-        0,
-        math.min(180, message.length),
-      );
+      final short =
+      message.substring(0, math.min(180, message.length));
 
       throw NearbyMosqueException(
         'Connection failed: $short',
         allowFallback: true,
       );
     } finally {
-      // Timeout হলেও নিজস্ব client-এর connection বন্ধ হবে।
-      if (_client == null) {
-        client.close();
-      }
+      if (_client == null) client.close();
     }
   }
 
-  Future<_Source> _masjidi(
-      String latitude,
-      String longitude,
-      ) async {
+  Future<_Source> _masjidi(String lat, String lng) async {
     dynamic data = await _request(
       Uri.parse(proxy).replace(
         queryParameters: {
           'action': 'nearby',
-          'lat': latitude,
-          'lng': longitude,
+          'lat': lat,
+          'lng': lng,
         },
       ),
       allowNoContent: true,
@@ -432,13 +681,8 @@ class NearbyMosqueService {
       throw Exception('Masjidi error');
     }
 
-    if (data is Map) {
-      data = data['data'];
-    }
-
-    if (data is! List) {
-      throw Exception('Invalid Masjidi list');
-    }
+    if (data is Map) data = data['data'];
+    if (data is! List) throw Exception('Invalid Masjidi list');
 
     final items = <MosqueItem>[];
 
@@ -446,11 +690,13 @@ class NearbyMosqueService {
       if (row is! Map) continue;
 
       final id = '${row['masjid_id'] ?? ''}';
-      final lat = double.tryParse('${row['latitude']}');
-      final lng = double.tryParse('${row['longitude']}');
+      final latitude =
+      double.tryParse('${row['latitude']}');
+      final longitude =
+      double.tryParse('${row['longitude']}');
 
       if ((int.tryParse(id) ?? 0) < 1 ||
-          !_valid(lat, lng)) {
+          !_valid(latitude, longitude)) {
         continue;
       }
 
@@ -466,10 +712,10 @@ class NearbyMosqueService {
             row['city'],
           ]
               .whereType<String>()
-              .where((value) => value.trim().isNotEmpty)
+              .where((s) => s.trim().isNotEmpty)
               .join(', '),
-          latitude: lat!,
-          longitude: lng!,
+          latitude: latitude!,
+          longitude: longitude!,
           names: {_normalize(name)}..remove(''),
           sources: {'Masjidi'},
         ),
@@ -485,19 +731,14 @@ class NearbyMosqueService {
     );
   }
 
-  Future<_Source> _osm(
-      String latitude,
-      String longitude,
-      ) async {
-    // Rounded query center-এর জন্য 100 m buffer।
-    // Final result actual GPS থেকে 15 km-এর মধ্যে থাকবে।
+  Future<_Source> _osm(String lat, String lng) async {
+    // 100 m buffer for rounded search coordinates.
+    // Final results are filtered against the actual GPS at 15 km.
     final query = '''
 [out:json][timeout:25];
 (
-  nwr(around:15100,$latitude,$longitude)
-    ["amenity"="place_of_worship"]["religion"="muslim"];
-  nwr(around:15100,$latitude,$longitude)
-    ["building"="mosque"];
+  nwr(around:15100,$lat,$lng)["amenity"="place_of_worship"]["religion"="muslim"];
+  nwr(around:15100,$lat,$lng)["building"="mosque"];
 );
 out center;
 ''';
@@ -517,7 +758,7 @@ out center;
       if (!first.allowFallback) rethrow;
 
       print(
-        '[TravelGuide Nearby v2] '
+        '[TravelGuide Nearby v3] '
             'Trying alternate OSM server: $first',
       );
 
@@ -560,18 +801,16 @@ out center;
         continue;
       }
 
-      final tags = row['tags'] is Map
-          ? row['tags'] as Map
-          : <String, dynamic>{};
+      final tags =
+      row['tags'] is Map ? row['tags'] as Map : <String, dynamic>{};
 
-      final center = row['center'] is Map
-          ? row['center'] as Map
-          : row;
+      final center =
+      row['center'] is Map ? row['center'] as Map : row;
 
-      final lat = double.tryParse('${center['lat']}');
-      final lng = double.tryParse('${center['lon']}');
+      final latitude = double.tryParse('${center['lat']}');
+      final longitude = double.tryParse('${center['lon']}');
 
-      if (!_valid(lat, lng) ||
+      if (!_valid(latitude, longitude) ||
           row['id'] == null ||
           row['type'] == null) {
         invalid++;
@@ -595,7 +834,7 @@ out center;
         tags['name:en'],
       ]
           .whereType<String>()
-          .where((value) => value.trim().isNotEmpty)
+          .where((s) => s.trim().isNotEmpty)
           .toList();
 
       items.add(
@@ -607,10 +846,10 @@ out center;
             tags['addr:city'],
           ]
               .whereType<String>()
-              .where((value) => value.trim().isNotEmpty)
+              .where((s) => s.trim().isNotEmpty)
               .join(', '),
-          latitude: lat!,
-          longitude: lng!,
+          latitude: latitude!,
+          longitude: longitude!,
           names: names.map(_normalize).toSet(),
           sources: {'OpenStreetMap'},
         ),
@@ -620,8 +859,7 @@ out center;
     return (
     items: items,
     warning: hasRemark
-        ? 'OpenStreetMap returned a partial result. '
-        'Retry later for the full list.'
+        ? 'OpenStreetMap returned a partial result.'
         : invalid > 0
         ? 'Some OpenStreetMap records have missing coordinates.'
         : null,
@@ -652,7 +890,7 @@ out center;
       return false;
     }
 
-    const genericNames = {
+    const generic = {
       'mosque',
       'masjid',
       'মসজিদ',
@@ -660,45 +898,29 @@ out center;
       'unnamed mosque',
     };
 
-    final commonNames =
-    a.names.intersection(b.names).difference(genericNames);
+    final common =
+    a.names.intersection(b.names).difference(generic);
 
-    return commonNames.isNotEmpty &&
+    return common.isNotEmpty &&
         distance(
           a.latitude,
           a.longitude,
           b.latitude,
           b.longitude,
-        ) <=
-            0.06;
+        ) <= 0.06;
   }
 
-  // Straight-line distance in kilometres.
-  static double distance(
-      double latitude1,
-      double longitude1,
-      double latitude2,
-      double longitude2,
-      ) {
-    const radians = math.pi / 180;
+  // Straight-line kilometres.
+  static double distance(double a, double b, double c, double d) {
+    const r = math.pi / 180;
 
-    final h = math.pow(
-      math.sin((latitude2 - latitude1) * radians / 2),
-      2,
-    ) +
-        math.cos(latitude1 * radians) *
-            math.cos(latitude2 * radians) *
-            math.pow(
-              math.sin(
-                (longitude2 - longitude1) * radians / 2,
-              ),
-              2,
-            );
+    final h = math.pow(math.sin((c - a) * r / 2), 2) +
+        math.cos(a * r) *
+            math.cos(c * r) *
+            math.pow(math.sin((d - b) * r / 2), 2);
 
     return 6371.0088 *
         2 *
-        math.asin(
-          math.sqrt(h.clamp(0.0, 1.0)),
-        );
+        math.asin(math.sqrt(h.clamp(0.0, 1.0)));
   }
 }
