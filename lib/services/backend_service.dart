@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/cupertino.dart';
 import 'package:http/http.dart' as http;
 
 class BackendService {
@@ -76,6 +77,43 @@ class BackendService {
   }
 
 
+// স্পেসিফিক প্লেসের জন্য রিভিউ আনার ফাংশন
+  static Future<List<dynamic>> fetchReviewsForPlace(String placeName) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/get_reviews.php'));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['status'] == 'success') {
+          List<dynamic> allReviews = data['data'];
+          // শুধু ঐ স্পেসিফিক প্লেসের রিভিউগুলো ফিল্টার করে রিটার্ন করা হচ্ছে
+          return allReviews.where((review) =>
+          review['place_name'].toString().toLowerCase() == placeName.toLowerCase()
+          ).toList();
+        }
+      }
+    } catch (e) {
+      debugPrint("Reviews Error: $e");
+    }
+    return [];
+  }
+
+
+  // স্পেসিফিক প্লেসের জন্য মেনু আনার ফাংশন
+  static Future<List<dynamic>> fetchMenusForPlace(String placeName) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/get_menus.php'));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['status'] == 'success') {
+          List<dynamic> allMenus = data['data'];
+          return allMenus.where((m) => m['place_name'].toString().toLowerCase() == placeName.toLowerCase()).toList();
+        }
+      }
+    } catch (e) {
+      debugPrint("Menus Error: $e");
+    }
+    return [];
+  }
 
 
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart'; // ফোন কল এবং ওয়েবসাইটের জন্য
 import '../../constants/app_colors.dart';
+import '../../services/backend_service.dart';
 import '../place_map_screen.dart';
 
 class BusinessDetailScreen extends StatefulWidget {
@@ -13,25 +15,46 @@ class BusinessDetailScreen extends StatefulWidget {
 
 class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   bool _isSaved = false;
+  late Future<List<dynamic>> _placeReviewsFuture;
+  late Future<List<dynamic>> _placeMenusFuture;
 
-  // ডার্ট কম্পাইলার যেন কনফিউজড না হয় তাই টাইপ ইনফারেন্স ব্যবহার করা হয়েছে
-  final _popularMenu = [
-    {'name': 'Chicken Biryani', 'price': '\$12.99', 'image': 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60'},
-    {'name': 'Beef Kebab', 'price': '\$11.99', 'image': 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60'},
-    {'name': 'Beef Curry', 'price': '\$13.99', 'image': 'https://images.unsplash.com/photo-1585937421612-70a008356fbe?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60'},
-    {'name': 'Desserts', 'price': '\$6.99', 'image': 'https://images.unsplash.com/photo-1551024601-bec78aea704b?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60'},
-  ];
+  // ডাইনামিক রেটিং এবং রিভিউ কাউন্টের জন্য ভেরিয়েবল
+  int _reviewCount = 0;
+  double _averageRating = 5.0;
 
-  final _reviews = [
-    {'name': 'Ali Khan', 'time': '2 days ago', 'rating': 5, 'text': 'Excellent food, great service and very clean environment.'},
-    {'name': 'Mariam Noor', 'time': '1 week ago', 'rating': 5, 'text': 'Absolutely loved the authentic taste. Highly recommended for families.'},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    final placeName = widget.placeData['name']?.toString() ?? '';
 
-  // ম্যাপ ওপেন করার ফাংশন
+    // রিয়েল মেনু ফেচ করা হচ্ছে
+    _placeMenusFuture = BackendService.fetchMenusForPlace(placeName);
+
+    // রিয়েল রিভিউ ফেচ করে রেটিং এবং কাউন্ট ক্যালকুলেট করা হচ্ছে
+    _placeReviewsFuture = BackendService.fetchReviewsForPlace(placeName);
+    _placeReviewsFuture.then((reviews) {
+      if (mounted) {
+        setState(() {
+          _reviewCount = reviews.length;
+          if (reviews.isNotEmpty) {
+            double total = 0;
+            for (var r in reviews) {
+              total += (int.tryParse(r['rating'].toString()) ?? 5);
+            }
+            _averageRating = total / reviews.length;
+          } else {
+            // ডাটাবেসে রেটিং থাকলে সেটা দেখাবে, না থাকলে ডিফল্ট 4.5
+            _averageRating = double.tryParse(widget.placeData['rating']?.toString() ?? '4.5') ?? 4.5;
+          }
+        });
+      }
+    });
+  }
+
+  // ম্যাপ ওপেন করার লজিক
   void _openDirections() {
     double lat = double.tryParse(widget.placeData['latitude'].toString()) ?? 0.0;
     double lng = double.tryParse(widget.placeData['longitude'].toString()) ?? 0.0;
-
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -44,15 +67,75 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     );
   }
 
+  // ফোন কল করার লজিক
+  Future<void> _makePhoneCall() async {
+    final phone = widget.placeData['phone']?.toString() ?? '';
+    if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone number not available for this place.')));
+      return;
+    }
+    final Uri launchUri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    }
+  }
+
+  // ওয়েবসাইট ওপেন করার লজিক
+  Future<void> _launchWebsite() async {
+    final website = widget.placeData['website']?.toString() ?? '';
+    if (website.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Website not available for this place.')));
+      return;
+    }
+    final Uri launchUri = Uri.parse(website.startsWith('http') ? website : 'https://$website');
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  // ক্যাটাগরি অনুযায়ী ডাইনামিক ফিচার ট্যাগ তৈরি করার লজিক
+  List<Widget> _buildDynamicFeatureTags(String category) {
+    category = category.toLowerCase();
+
+    if (category.contains('masjid') || category.contains('mosque') || category.contains('prayer')) {
+      return [
+        _buildFeatureTag(Icons.mosque, 'Prayer\nSpace'),
+        _buildFeatureTag(Icons.water_drop_outlined, 'Wudu\nArea'),
+        _buildFeatureTag(Icons.volume_up_outlined, 'Azan\nBroadcast'),
+      ];
+    } else if (category.contains('food') || category.contains('restaurant')) {
+      return [
+        _buildFeatureTag(Icons.verified_user_outlined, 'Halal\nVerified'),
+        _buildFeatureTag(Icons.person_outline, 'Muslim\nOwned'),
+        _buildFeatureTag(Icons.family_restroom, 'Family\nFriendly'),
+      ];
+    } else {
+      return [
+        _buildFeatureTag(Icons.family_restroom, 'Family\nFriendly'),
+        _buildFeatureTag(Icons.safety_check_outlined, 'Safe\nArea'),
+        _buildFeatureTag(Icons.mosque_outlined, 'Nearby\nPrayer'),
+      ];
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final imageUrl = widget.placeData['image']?.toString() ?? widget.placeData['image_url']?.toString() ?? 'https://via.placeholder.com/400';
     final placeName = widget.placeData['name']?.toString() ?? 'Unknown Place';
-    final distance = widget.placeData['distance'] != null ? "${(widget.placeData['distance'] as double).toStringAsFixed(1)} mi" : "0.6 mi";
+    final categoryName = widget.placeData['category_name']?.toString() ?? 'Place';
+    final distance = widget.placeData['distance'] != null ? "${(widget.placeData['distance'] as double).toStringAsFixed(1)} km" : "1.2 km";
+    final priceLevel = widget.placeData['price_level']?.toString() ?? '\$\$';
+
+    // অ্যাড্রেস না থাকলে ল্যাটিচিউড-লংগিচিউড দেখাবে
+    String address = widget.placeData['address']?.toString() ?? '';
+    if (address.isEmpty) {
+      address = '${widget.placeData['latitude'] ?? ''}, ${widget.placeData['longitude'] ?? ''}';
+    }
+
+    final openTime = widget.placeData['open_time']?.toString() ?? '10:00 AM - 10:00 PM';
 
     return Scaffold(
       backgroundColor: Colors.white,
-      // নিচের স্টিকি 'Get Directions' বাটন
       bottomNavigationBar: SafeArea(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -72,7 +155,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // টপ হিরো ইমেজ সেকশন
+          // ================= HERO IMAGE =================
           SliverAppBar(
             expandedHeight: 250.0,
             pinned: true,
@@ -94,9 +177,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                   backgroundColor: Colors.black.withOpacity(0.4),
                   child: IconButton(
                     icon: Icon(_isSaved ? Icons.favorite : Icons.favorite_border, color: _isSaved ? Colors.red : Colors.white, size: 20),
-                    onPressed: () {
-                      setState(() => _isSaved = !_isSaved); // সেভ/আনসেভ লজিক
-                    },
+                    onPressed: () => setState(() => _isSaved = !_isSaved),
                   ),
                 ),
               ),
@@ -106,9 +187,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                   backgroundColor: Colors.black.withOpacity(0.4),
                   child: IconButton(
                     icon: const Icon(Icons.ios_share, color: Colors.white, size: 20),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Share option clicked')));
-                    },
+                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Share option clicked'))),
                   ),
                 ),
               ),
@@ -131,18 +210,19 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
             ),
           ),
 
-          // বিস্তারিত তথ্যের সেকশন
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(20.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Title and Open Tag
+                  // ================= TITLE & STATUS =================
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(child: Text(placeName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textDark))),
+                      Expanded(
+                          child: Text(placeName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textDark))
+                      ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(20)),
@@ -152,176 +232,219 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                   ),
                   const SizedBox(height: 8),
 
-                  // Rating Row
+                  // ================= DYNAMIC RATING =================
                   Row(
                     children: [
-                      const Text('4.8', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      Text(_averageRating.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       const SizedBox(width: 4),
-                      Row(children: List.generate(5, (index) => const Icon(Icons.star, color: Colors.orange, size: 16))),
+                      Row(
+                          children: List.generate(5, (index) {
+                            return Icon(
+                                index < _averageRating.round() ? Icons.star : Icons.star_border,
+                                color: Colors.orange,
+                                size: 16
+                            );
+                          })
+                      ),
                       const SizedBox(width: 6),
-                      const Text('(312 Reviews)', style: TextStyle(color: AppColors.textLight, fontSize: 14)),
+                      Text('($_reviewCount Reviews)', style: const TextStyle(color: Colors.grey, fontSize: 14)),
                       const Spacer(),
-                      const Text('\$\$', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text(priceLevel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     ],
                   ),
                   const SizedBox(height: 8),
 
-                  // Categories
+                  // ================= CATEGORY & ADDRESS =================
                   Row(
                     children: [
                       const Icon(Icons.category, color: Colors.green, size: 16),
                       const SizedBox(width: 6),
-                      Text(widget.placeData['category_name']?.toString() ?? 'Pakistani • Indian • Middle Eastern', style: const TextStyle(color: AppColors.textLight, fontSize: 14)),
+                      Text(categoryName, style: const TextStyle(color: Colors.grey, fontSize: 14)),
                     ],
                   ),
                   const SizedBox(height: 8),
 
-                  // Location
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.location_on_outlined, color: AppColors.textLight, size: 16),
+                      const Icon(Icons.location_on_outlined, color: Colors.grey, size: 16),
                       const SizedBox(width: 6),
-                      Expanded(child: Text('233 Lark St, Albany, NY 12210 • $distance', style: const TextStyle(color: AppColors.textLight, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      Expanded(
+                          child: Text('$address • $distance away', style: const TextStyle(color: Colors.grey, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis)
+                      ),
                     ],
                   ),
                   const SizedBox(height: 24),
 
-                  // Action Buttons (4 grid row)
+                  // ================= DYNAMIC ACTIONS =================
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       _buildActionButton(title: 'Directions', icon: Icons.directions_rounded, isPrimary: true, onTap: _openDirections),
-                      _buildActionButton(title: 'Call', icon: Icons.phone_outlined, onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Calling...')))),
-                      _buildActionButton(title: 'Website', icon: Icons.language, onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Opening Website...')))),
-                      _buildActionButton(title: 'Save', icon: _isSaved ? Icons.favorite : Icons.favorite_border, iconColor: _isSaved ? Colors.red : AppColors.textDark, onTap: () {
-                        setState(() => _isSaved = !_isSaved);
-                      }),
+                      _buildActionButton(title: 'Call', icon: Icons.phone_outlined, onTap: _makePhoneCall),
+                      _buildActionButton(title: 'Website', icon: Icons.language, onTap: _launchWebsite),
+                      _buildActionButton(title: 'Save', icon: _isSaved ? Icons.favorite : Icons.favorite_border, iconColor: _isSaved ? Colors.red : AppColors.textDark, onTap: () => setState(() => _isSaved = !_isSaved)),
                     ],
                   ),
                   const SizedBox(height: 24),
 
-                  // Halal Features Box
+                  // ================= SMART DYNAMIC TAGS =================
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                     decoration: BoxDecoration(color: const Color(0xFFF2F9F6), borderRadius: BorderRadius.circular(16)),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _buildFeatureTag(Icons.verified_user_outlined, 'Halal\nVerified'),
-                            _buildFeatureTag(Icons.person_outline, 'Muslim\nOwned'),
-                            _buildFeatureTag(Icons.family_restroom, 'Family\nFriendly'),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            const SizedBox(width: 10),
-                            _buildFeatureTag(Icons.mosque, 'Prayer Space'),
-                          ],
-                        )
-                      ],
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: _buildDynamicFeatureTags(categoryName),
                     ),
                   ),
                   const SizedBox(height: 24),
 
-                  // About Section
+                  // ================= ABOUT SECTION =================
                   const Text('ABOUT', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0, color: AppColors.textDark)),
                   const SizedBox(height: 12),
                   Text(
-                    widget.placeData['description']?.toString() ?? 'Delicious halal food made with fresh ingredients.\nDine-in, Takeaway & Catering available.',
+                    widget.placeData['description']?.toString() ?? 'This is one of the favorite places in the area. Visit to experience the beautiful environment and excellent services.',
                     style: const TextStyle(fontSize: 15, color: Colors.black87, height: 1.4),
                   ),
                   const SizedBox(height: 12),
                   Row(
-                    children: const [
-                      Icon(Icons.access_time_outlined, size: 18, color: AppColors.textDark),
-                      SizedBox(width: 8),
-                      Text('Open Daily: 10:00 AM - 10:00 PM', style: TextStyle(fontWeight: FontWeight.w600)),
+                    children: [
+                      const Icon(Icons.access_time_outlined, size: 18, color: AppColors.textDark),
+                      const SizedBox(width: 8),
+                      Text('Open Daily: $openTime', style: const TextStyle(fontWeight: FontWeight.w600)),
                     ],
                   ),
                   const SizedBox(height: 30),
 
-                  // Popular Menu Section
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const [
-                      Text('POPULAR MENU', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0, color: AppColors.textDark)),
-                      Text('View All', style: TextStyle(color: Color(0xFF115C49), fontWeight: FontWeight.bold, fontSize: 13)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    height: 140,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _popularMenu.length,
-                      physics: const BouncingScrollPhysics(),
-                      itemBuilder: (context, index) {
-                        final menu = _popularMenu[index];
-                        return Container(
-                          width: 110,
-                          margin: const EdgeInsets.only(right: 12),
-                          // String casting added to prevent "Object? to String" errors
-                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), image: DecorationImage(image: NetworkImage(menu['image'].toString()), fit: BoxFit.cover)),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.8)]),
-                            ),
-                            padding: const EdgeInsets.all(8),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(menu['name'].toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12), maxLines: 2),
-                                const SizedBox(height: 2),
-                                Text(menu['price'].toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                              ],
+                  // ================= SMART CONDITIONAL MENU =================
+                  // মেনু না থাকলে (যেমন মসজিদের ক্ষেত্রে) এই সেকশনটি অটোমেটিক গায়েব হয়ে যাবে
+                  FutureBuilder<List<dynamic>>(
+                    future: _placeMenusFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator(color: Color(0xFF115C49)));
+                      }
+
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return const SizedBox.shrink(); // মেনু না থাকলে কিছুই দেখাবে না
+                      }
+
+                      final menus = snapshot.data!;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: const [
+                              Text('POPULAR MENU', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0, color: AppColors.textDark)),
+                              Text('View All', style: TextStyle(color: Color(0xFF115C49), fontWeight: FontWeight.bold, fontSize: 13)),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: 140,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: menus.length,
+                              physics: const BouncingScrollPhysics(),
+                              itemBuilder: (context, index) {
+                                final menu = menus[index];
+                                return Container(
+                                  width: 110,
+                                  margin: const EdgeInsets.only(right: 12),
+                                  decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      image: DecorationImage(image: NetworkImage(menu['image'].toString()), fit: BoxFit.cover)
+                                  ),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [Colors.transparent, Colors.black.withOpacity(0.8)]
+                                      ),
+                                    ),
+                                    padding: const EdgeInsets.all(8),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(menu['item_name'].toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12), maxLines: 2),
+                                        const SizedBox(height: 2),
+                                        Text(menu['price'].toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 30),
-
-                  // Reviews Section
-                  const Text('REVIEWS (312)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0, color: AppColors.textDark)),
-                  const SizedBox(height: 16),
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    padding: EdgeInsets.zero,
-                    itemCount: _reviews.length,
-                    itemBuilder: (context, index) {
-                      final review = _reviews[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const CircleAvatar(radius: 16, backgroundImage: NetworkImage('https://i.pravatar.cc/100')),
-                                const SizedBox(width: 10),
-                                // String casting added
-                                Text(review['name'].toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                                const Spacer(),
-                                Text(review['time'].toString(), style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Row(children: List.generate(5, (index) => const Icon(Icons.star, color: Colors.orange, size: 14))),
-                            const SizedBox(height: 8),
-                            Text(review['text'].toString(), style: const TextStyle(fontSize: 14, color: Colors.black87)),
-                          ],
-                        ),
+                          const SizedBox(height: 30),
+                        ],
                       );
                     },
                   ),
+
+                  // ================= DYNAMIC REVIEWS =================
+                  const Text('REVIEWS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0, color: AppColors.textDark)),
+                  const SizedBox(height: 16),
+
+                  FutureBuilder<List<dynamic>>(
+                    future: _placeReviewsFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator(color: Color(0xFF115C49))));
+                      } else if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Text("No reviews yet. Be the first to review!", style: TextStyle(color: Colors.grey)),
+                        );
+                      }
+
+                      final reviews = snapshot.data!;
+                      return ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        itemCount: reviews.length,
+                        itemBuilder: (context, index) {
+                          final review = reviews[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 18,
+                                      backgroundImage: NetworkImage(review['user_image'].toString()),
+                                      onBackgroundImageError: (_, __) => const Icon(Icons.person),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(review['user_name'].toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                    const Spacer(),
+                                    const Text('Recently', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                    children: List.generate(
+                                        int.tryParse(review['rating'].toString()) ?? 5,
+                                            (index) => const Icon(Icons.star, color: Colors.orange, size: 14)
+                                    )
+                                ),
+                                const SizedBox(height: 8),
+                                Text(review['review_text'].toString(), style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.4)),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
@@ -331,7 +454,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     );
   }
 
-  // Helper Widget for 4 Action Buttons
+  // বাটন বিল্ডার
   Widget _buildActionButton({required String title, required IconData icon, bool isPrimary = false, Color? iconColor, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
@@ -355,7 +478,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     );
   }
 
-  // Helper Widget for Halal Tags
+  // ফিচার ট্যাগ বিল্ডার
   Widget _buildFeatureTag(IconData icon, String title) {
     return Row(
       mainAxisSize: MainAxisSize.min,
