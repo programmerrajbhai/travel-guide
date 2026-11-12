@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/backend_service.dart';
 import '../constants/app_colors.dart';
 import 'business_detail/business_detail_screen.dart';
+import 'place_map_screen.dart';
 
 class CategoryPlacesScreen extends StatefulWidget {
   final String categoryId;
@@ -49,6 +50,7 @@ class _CategoryPlacesScreenState extends State<CategoryPlacesScreen> {
             return const Center(child: Text("No places available."));
           }
 
+          // Filter places by category ID
           final categoryPlaces = snapshot.data!.where((place) {
             return place['category_id'].toString() == widget.categoryId.toString();
           }).toList();
@@ -101,7 +103,7 @@ class _CategoryPlacesScreenState extends State<CategoryPlacesScreen> {
                           ClipRRect(
                             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                             child: Image.network(
-                              place['image']?.toString() ?? '',
+                              place['image']?.toString() ?? 'https://via.placeholder.com/400',
                               height: 200,
                               width: double.infinity,
                               fit: BoxFit.cover,
@@ -160,19 +162,31 @@ class _CategoryPlacesScreenState extends State<CategoryPlacesScreen> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                const Icon(Icons.favorite_border, color: Colors.grey, size: 22),
+                                IconButton(
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  icon: const Icon(Icons.directions, color: AppColors.primaryColor, size: 28),
+                                  onPressed: () {
+                                    double lat = double.tryParse(place['latitude'].toString()) ?? 0.0;
+                                    double lng = double.tryParse(place['longitude'].toString()) ?? 0.0;
+                                    Navigator.push(context, MaterialPageRoute(
+                                        builder: (context) => PlaceMapScreen(placeName: place['name'].toString(), latitude: lat, longitude: lng)
+                                    ));
+                                  },
+                                )
                               ],
                             ),
                             const SizedBox(height: 8),
                             Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Icon(Icons.location_on, size: 16, color: AppColors.primaryColor),
+                                const Icon(Icons.location_on, size: 16, color: Colors.grey),
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
-                                    "${place['latitude'] ?? ''}, ${place['longitude'] ?? ''} • 2.5 km away",
+                                    place['address']?.toString() ?? "${place['latitude'] ?? ''}, ${place['longitude'] ?? ''}",
                                     style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500),
-                                    maxLines: 1,
+                                    maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -191,7 +205,7 @@ class _CategoryPlacesScreenState extends State<CategoryPlacesScreen> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                   decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
-                                  child: const Text('Halal Verified', style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold)),
+                                  child: const Text('Verified', style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold)),
                                 ),
                               ],
                             )

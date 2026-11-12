@@ -103,7 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(height: 28),
                           const QuickActionsSection(),
                           const SizedBox(height: 28),
-                          const DynamicCategories(),
+                        //  const DynamicCategories(),
                           const SizedBox(height: 28),
                           if (point != null) const DynamicPlaces(),
                           const SizedBox(height: 28),

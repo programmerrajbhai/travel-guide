@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart'; // ফোন কল এবং ওয়েবসাইটের জন্য
+import 'package:url_launcher/url_launcher.dart';
 import '../../constants/app_colors.dart';
 import '../../services/backend_service.dart';
 import '../place_map_screen.dart';
@@ -16,9 +16,8 @@ class BusinessDetailScreen extends StatefulWidget {
 class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   bool _isSaved = false;
   late Future<List<dynamic>> _placeReviewsFuture;
-  late Future<List<dynamic>> _placeMenusFuture;
+  late Future<List<dynamic>> _placeItemsFuture;
 
-  // ডাইনামিক রেটিং এবং রিভিউ কাউন্টের জন্য ভেরিয়েবল
   int _reviewCount = 0;
   double _averageRating = 5.0;
 
@@ -27,10 +26,10 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     super.initState();
     final placeName = widget.placeData['name']?.toString() ?? '';
 
-    // রিয়েল মেনু ফেচ করা হচ্ছে
-    _placeMenusFuture = BackendService.fetchMenusForPlace(placeName);
+    // Fetching Universal Items (Menus/Products/Facilities)
+    _placeItemsFuture = BackendService.fetchItemsForPlace(placeName); // Make sure to add this function in backend_service.dart
 
-    // রিয়েল রিভিউ ফেচ করে রেটিং এবং কাউন্ট ক্যালকুলেট করা হচ্ছে
+    // Fetching and Calculating Reviews
     _placeReviewsFuture = BackendService.fetchReviewsForPlace(placeName);
     _placeReviewsFuture.then((reviews) {
       if (mounted) {
@@ -43,7 +42,6 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
             }
             _averageRating = total / reviews.length;
           } else {
-            // ডাটাবেসে রেটিং থাকলে সেটা দেখাবে, না থাকলে ডিফল্ট 4.5
             _averageRating = double.tryParse(widget.placeData['rating']?.toString() ?? '4.5') ?? 4.5;
           }
         });
@@ -51,7 +49,6 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     });
   }
 
-  // ম্যাপ ওপেন করার লজিক
   void _openDirections() {
     double lat = double.tryParse(widget.placeData['latitude'].toString()) ?? 0.0;
     double lng = double.tryParse(widget.placeData['longitude'].toString()) ?? 0.0;
@@ -67,36 +64,29 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     );
   }
 
-  // ফোন কল করার লজিক
   Future<void> _makePhoneCall() async {
     final phone = widget.placeData['phone']?.toString() ?? '';
     if (phone.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone number not available for this place.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone number not available.')));
       return;
     }
     final Uri launchUri = Uri(scheme: 'tel', path: phone);
-    if (await canLaunchUrl(launchUri)) {
-      await launchUrl(launchUri);
-    }
+    if (await canLaunchUrl(launchUri)) await launchUrl(launchUri);
   }
 
-  // ওয়েবসাইট ওপেন করার লজিক
   Future<void> _launchWebsite() async {
     final website = widget.placeData['website']?.toString() ?? '';
     if (website.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Website not available for this place.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Website not available.')));
       return;
     }
     final Uri launchUri = Uri.parse(website.startsWith('http') ? website : 'https://$website');
-    if (await canLaunchUrl(launchUri)) {
-      await launchUrl(launchUri, mode: LaunchMode.externalApplication);
-    }
+    if (await canLaunchUrl(launchUri)) await launchUrl(launchUri, mode: LaunchMode.externalApplication);
   }
 
-  // ক্যাটাগরি অনুযায়ী ডাইনামিক ফিচার ট্যাগ তৈরি করার লজিক
+  // স্মার্ট ক্যাটাগরি ট্যাগস
   List<Widget> _buildDynamicFeatureTags(String category) {
     category = category.toLowerCase();
-
     if (category.contains('masjid') || category.contains('mosque') || category.contains('prayer')) {
       return [
         _buildFeatureTag(Icons.mosque, 'Prayer\nSpace'),
@@ -113,26 +103,21 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
       return [
         _buildFeatureTag(Icons.family_restroom, 'Family\nFriendly'),
         _buildFeatureTag(Icons.safety_check_outlined, 'Safe\nArea'),
-        _buildFeatureTag(Icons.mosque_outlined, 'Nearby\nPrayer'),
+        _buildFeatureTag(Icons.thumb_up_alt_outlined, 'Highly\nRated'),
       ];
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl = widget.placeData['image']?.toString() ?? widget.placeData['image_url']?.toString() ?? 'https://via.placeholder.com/400';
+    final imageUrl = widget.placeData['image']?.toString() ?? 'https://via.placeholder.com/400';
     final placeName = widget.placeData['name']?.toString() ?? 'Unknown Place';
     final categoryName = widget.placeData['category_name']?.toString() ?? 'Place';
-    final distance = widget.placeData['distance'] != null ? "${(widget.placeData['distance'] as double).toStringAsFixed(1)} km" : "1.2 km";
-    final priceLevel = widget.placeData['price_level']?.toString() ?? '\$\$';
 
-    // অ্যাড্রেস না থাকলে ল্যাটিচিউড-লংগিচিউড দেখাবে
     String address = widget.placeData['address']?.toString() ?? '';
-    if (address.isEmpty) {
-      address = '${widget.placeData['latitude'] ?? ''}, ${widget.placeData['longitude'] ?? ''}';
-    }
-
+    if (address.isEmpty) address = '${widget.placeData['latitude'] ?? ''}, ${widget.placeData['longitude'] ?? ''}';
     final openTime = widget.placeData['open_time']?.toString() ?? '10:00 AM - 10:00 PM';
+    final priceLevel = widget.placeData['price_level']?.toString() ?? '\$\$';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -181,27 +166,17 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
-                child: CircleAvatar(
-                  backgroundColor: Colors.black.withOpacity(0.4),
-                  child: IconButton(
-                    icon: const Icon(Icons.ios_share, color: Colors.white, size: 20),
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Share option clicked'))),
-                  ),
-                ),
-              ),
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(imageUrl, fit: BoxFit.cover),
+                  Image.network(imageUrl, fit: BoxFit.cover, errorBuilder: (c,e,s) => Container(color: Colors.grey[300])),
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                        colors: [Colors.black.withOpacity(0.5), Colors.transparent, Colors.black.withOpacity(0.1)],
+                        colors: [Colors.black.withOpacity(0.5), Colors.transparent, Colors.black.withOpacity(0.2)],
                       ),
                     ),
                   ),
@@ -220,9 +195,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                          child: Text(placeName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textDark))
-                      ),
+                      Expanded(child: Text(placeName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textDark))),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(20)),
@@ -232,51 +205,40 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                   ),
                   const SizedBox(height: 8),
 
-                  // ================= DYNAMIC RATING =================
+                  // ================= RATING =================
                   Row(
                     children: [
                       Text(_averageRating.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       const SizedBox(width: 4),
-                      Row(
-                          children: List.generate(5, (index) {
-                            return Icon(
-                                index < _averageRating.round() ? Icons.star : Icons.star_border,
-                                color: Colors.orange,
-                                size: 16
-                            );
-                          })
-                      ),
+                      Row(children: List.generate(5, (index) => Icon(index < _averageRating.round() ? Icons.star : Icons.star_border, color: Colors.orange, size: 16))),
                       const SizedBox(width: 6),
                       Text('($_reviewCount Reviews)', style: const TextStyle(color: Colors.grey, fontSize: 14)),
                       const Spacer(),
                       Text(priceLevel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
 
                   // ================= CATEGORY & ADDRESS =================
                   Row(
                     children: [
-                      const Icon(Icons.category, color: Colors.green, size: 16),
+                      const Icon(Icons.category, color: Color(0xFF115C49), size: 16),
                       const SizedBox(width: 6),
-                      Text(categoryName, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                      Text(categoryName, style: const TextStyle(color: Colors.grey, fontSize: 14, fontWeight: FontWeight.w500)),
                     ],
                   ),
                   const SizedBox(height: 8),
-
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Icon(Icons.location_on_outlined, color: Colors.grey, size: 16),
                       const SizedBox(width: 6),
-                      Expanded(
-                          child: Text('$address • $distance away', style: const TextStyle(color: Colors.grey, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis)
-                      ),
+                      Expanded(child: Text(address, style: const TextStyle(color: Colors.grey, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis)),
                     ],
                   ),
                   const SizedBox(height: 24),
 
-                  // ================= DYNAMIC ACTIONS =================
+                  // ================= ACTIONS =================
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -288,7 +250,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // ================= SMART DYNAMIC TAGS =================
+                  // ================= TAGS =================
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                     decoration: BoxDecoration(color: const Color(0xFFF2F9F6), borderRadius: BorderRadius.circular(16)),
@@ -299,45 +261,47 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // ================= ABOUT SECTION =================
+                  // ================= ABOUT =================
                   const Text('ABOUT', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0, color: AppColors.textDark)),
                   const SizedBox(height: 12),
                   Text(
-                    widget.placeData['description']?.toString() ?? 'This is one of the favorite places in the area. Visit to experience the beautiful environment and excellent services.',
-                    style: const TextStyle(fontSize: 15, color: Colors.black87, height: 1.4),
+                    widget.placeData['description']?.toString() ?? 'Explore the beauty and services of $placeName. A highly recommended place for everyone.',
+                    style: const TextStyle(fontSize: 15, color: Colors.black87, height: 1.5),
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       const Icon(Icons.access_time_outlined, size: 18, color: AppColors.textDark),
                       const SizedBox(width: 8),
-                      Text('Open Daily: $openTime', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text('Hours: $openTime', style: const TextStyle(fontWeight: FontWeight.w600)),
                     ],
                   ),
                   const SizedBox(height: 30),
 
-                  // ================= SMART CONDITIONAL MENU =================
-                  // মেনু না থাকলে (যেমন মসজিদের ক্ষেত্রে) এই সেকশনটি অটোমেটিক গায়েব হয়ে যাবে
+                  // ================= DYNAMIC ITEMS (MENU / PRODUCT / FACILITY) =================
                   FutureBuilder<List<dynamic>>(
-                    future: _placeMenusFuture,
+                    future: _placeItemsFuture,
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator(color: Color(0xFF115C49)));
                       }
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) return const SizedBox.shrink();
 
-                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        return const SizedBox.shrink(); // মেনু না থাকলে কিছুই দেখাবে না
-                      }
+                      final items = snapshot.data!;
+                      // Determining section title based on what item type came from DB
+                      String sectionTitle = "AVAILABLE ITEMS";
+                      if (items[0]['item_type'] == 'menu') sectionTitle = "POPULAR MENU";
+                      else if (items[0]['item_type'] == 'product') sectionTitle = "TOP PRODUCTS";
+                      else if (items[0]['item_type'] == 'facility') sectionTitle = "FACILITIES";
 
-                      final menus = snapshot.data!;
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: const [
-                              Text('POPULAR MENU', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0, color: AppColors.textDark)),
-                              Text('View All', style: TextStyle(color: Color(0xFF115C49), fontWeight: FontWeight.bold, fontSize: 13)),
+                            children: [
+                              Text(sectionTitle, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0, color: AppColors.textDark)),
+                              const Text('View All', style: TextStyle(color: Color(0xFF115C49), fontWeight: FontWeight.bold, fontSize: 13)),
                             ],
                           ),
                           const SizedBox(height: 16),
@@ -345,23 +309,26 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                             height: 140,
                             child: ListView.builder(
                               scrollDirection: Axis.horizontal,
-                              itemCount: menus.length,
+                              itemCount: items.length,
                               physics: const BouncingScrollPhysics(),
                               itemBuilder: (context, index) {
-                                final menu = menus[index];
+                                final item = items[index];
+                                final hasPrice = item['price'] != null && item['price'].toString().isNotEmpty;
                                 return Container(
                                   width: 110,
                                   margin: const EdgeInsets.only(right: 12),
                                   decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(12),
-                                      image: DecorationImage(image: NetworkImage(menu['image'].toString()), fit: BoxFit.cover)
+                                    borderRadius: BorderRadius.circular(12),
+                                    color: Colors.grey[200],
+                                    image: item['image'] != null && item['image'].toString().isNotEmpty
+                                        ? DecorationImage(image: NetworkImage(item['image'].toString()), fit: BoxFit.cover)
+                                        : null,
                                   ),
                                   child: Container(
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(12),
                                       gradient: LinearGradient(
-                                          begin: Alignment.topCenter,
-                                          end: Alignment.bottomCenter,
+                                          begin: Alignment.topCenter, end: Alignment.bottomCenter,
                                           colors: [Colors.transparent, Colors.black.withOpacity(0.8)]
                                       ),
                                     ),
@@ -370,9 +337,9 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                                       mainAxisAlignment: MainAxisAlignment.end,
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(menu['item_name'].toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12), maxLines: 2),
-                                        const SizedBox(height: 2),
-                                        Text(menu['price'].toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                        Text(item['title'].toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12), maxLines: 2),
+                                        if (hasPrice) const SizedBox(height: 2),
+                                        if (hasPrice) Text(item['price'].toString(), style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 12)),
                                       ],
                                     ),
                                   ),
@@ -387,7 +354,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                   ),
 
                   // ================= DYNAMIC REVIEWS =================
-                  const Text('REVIEWS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0, color: AppColors.textDark)),
+                  const Text('USER REVIEWS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0, color: AppColors.textDark)),
                   const SizedBox(height: 16),
 
                   FutureBuilder<List<dynamic>>(
@@ -420,7 +387,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                                     CircleAvatar(
                                       radius: 18,
                                       backgroundImage: NetworkImage(review['user_image'].toString()),
-                                      onBackgroundImageError: (_, __) => const Icon(Icons.person),
+                                      onBackgroundImageError: (_, __) => const Icon(Icons.person, color: Colors.grey),
                                     ),
                                     const SizedBox(width: 12),
                                     Text(review['user_name'].toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
@@ -454,7 +421,6 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     );
   }
 
-  // বাটন বিল্ডার
   Widget _buildActionButton({required String title, required IconData icon, bool isPrimary = false, Color? iconColor, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
@@ -478,7 +444,6 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     );
   }
 
-  // ফিচার ট্যাগ বিল্ডার
   Widget _buildFeatureTag(IconData icon, String title) {
     return Row(
       mainAxisSize: MainAxisSize.min,
